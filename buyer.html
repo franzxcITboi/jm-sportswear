@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Verification – JM Maker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./src/styles/buyer.css" />
+  </head>
+  <body>
+    <main class="verify-shell">
+      <section class="verify-card">
+        <!-- Minimal Brand & Heading -->
+        <header class="verify-header">
+          <img src="./images/logo.png" alt="JM Maker Sportswear Logo" class="verify-logo" />
+          <h1>Payment Verification &ndash; JM Maker</h1>
+          <p class="verify-instructions">
+            Please upload your payment receipt or transaction screenshot and provide your payment reference number for verification.
+          </p>
+        </header>
+
+        <!-- STATE 1: INVALID / MISSING / REVOKED / EXPIRED LINK -->
+        <div id="linkInvalidState" class="verify-notice-box" hidden>
+          <div class="notice-icon notice-icon-red" aria-hidden="true">!</div>
+          <h2 id="linkInvalidTitle">Verification Link Unavailable</h2>
+          <p id="linkInvalidMessage">
+            Please open the unique payment verification link provided to you by JM Maker Sportswear.
+          </p>
+        </div>
+
+        <!-- STATE 2: DIRECT PAYMENT SUBMISSION FORM (NO LOGIN / NO REGISTRATION) -->
+        <div id="paymentFormState" hidden>
+          <!-- Linked Transaction Summary Strip (from opaque token; no PII in URL) -->
+          <div id="transactionContextStrip" class="tx-context-strip"></div>
+
+          <!-- Owner Rejection Feedback Banner (only shown if a prior proof on this link was rejected) -->
+          <div id="rejectionNoticeBanner" class="verify-alert verify-alert-error" hidden></div>
+
+          <!-- Form Validation Error Banner -->
+          <div id="formErrorBanner" class="verify-alert verify-alert-error" hidden></div>
+
+          <form id="paymentVerificationForm" novalidate>
+            <!-- Required Field 1: Payment Screenshot Upload -->
+            <div class="verify-field">
+              <label>
+                Payment Screenshot <span class="req-star">*</span>
+              </label>
+              <input
+                type="file"
+                id="proofFileInput"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+              />
+              <div id="uploadDropzone" class="proof-dropzone">
+                <div id="uploadEmptyState" class="dropzone-empty">
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                  <strong>Upload your payment receipt or screenshot</strong>
+                  <span>Accepted formats: JPG, JPEG, PNG, WEBP (max 5 MB)</span>
+                  <button type="button" id="chooseProofBtn" class="btn-outline">
+                    Choose Image
+                  </button>
+                </div>
+
+                <div id="uploadPreviewState" class="dropzone-preview" hidden>
+                  <img id="proofPreviewImg" src="" alt="Payment screenshot preview" />
+                  <div class="preview-meta">
+                    <strong id="proofFileName">receipt.png</strong>
+                    <span id="proofFileSize">0 KB</span>
+                    <div class="preview-actions">
+                      <button type="button" id="replaceProofBtn" class="btn-outline btn-sm">Replace</button>
+                      <button type="button" id="removeProofBtn" class="btn-outline btn-sm btn-danger-text">Remove</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Required Field 2: Transaction Reference Number -->
+            <div class="verify-field">
+              <label for="referenceNumberInput">
+                Transaction Reference Number <span class="req-star">*</span>
+              </label>
+              <input
+                type="text"
+                id="referenceNumberInput"
+                placeholder="Enter transaction reference number (e.g., 902184756123)"
+                autocomplete="off"
+                required
+              />
+            </div>
+
+            <!-- Optional Field: Additional Notes -->
+            <div class="verify-field">
+              <label for="additionalNotesInput">
+                Additional Notes <span class="opt-tag">(Optional)</span>
+              </label>
+              <textarea
+                id="additionalNotesInput"
+                rows="3"
+                placeholder="Add any helpful payment details or remarks (optional)"
+              ></textarea>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" id="submitProofBtn" class="btn-primary-red">
+              Submit Payment Proof
+            </button>
+          </form>
+        </div>
+
+        <!-- STATE 3: CONFIRMATION / ALREADY SUBMITTED STATUS -->
+        <div id="submissionConfirmedState" class="verify-confirm-box" hidden>
+          <div id="confirmStatusIcon" class="notice-icon notice-icon-green" aria-hidden="true">&#10003;</div>
+          <h2 id="confirmHeading">Payment Proof Submitted</h2>
+          <p id="confirmMessage" class="confirm-primary-msg">
+            Your payment proof has been successfully submitted. Please wait for the owner to verify your transaction.
+          </p>
+
+          <div id="confirmDetailsCard" class="confirm-details-card"></div>
+        </div>
+
+        <footer class="verify-footer">
+          <span>JM Maker Sportswear &bull; Secure Direct Verification</span>
+        </footer>
+      </section>
+    </main>
+
+    <!-- Full-size Screenshot Preview Lightbox -->
+    <div id="proofLightboxModal" class="lightbox-backdrop" role="dialog" aria-modal="true" hidden>
+      <div class="lightbox-card">
+        <div class="lightbox-head">
+          <h3>Payment Screenshot Preview</h3>
+          <button type="button" id="closeLightboxBtn" class="lightbox-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="lightbox-body">
+          <img id="lightboxImg" src="" alt="Uploaded payment proof" />
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/pages/buyerController.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,71 @@
+/* ============================================================================
+   RESPONSIVE BREAKPOINTS (TABLET & MOBILE DRAWER LAYOUTS)
+   ============================================================================ */
+
+@media (max-width: 1100px) {
+  .control-grid,
+  .control-grid-inventory,
+  .kpi-strip,
+  .form-grid-4,
+  .form-grid-5,
+  .fulfill-stepper {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .sidebar-shell {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px !important;
+    transform: translateX(-105%);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .app-layout.sidebar-open .sidebar-shell {
+    transform: translateX(0);
+  }
+
+  .topbar {
+    padding: 10px 14px;
+  }
+
+  .page-context-bar {
+    padding: 8px 14px;
+  }
+
+  .page-stage {
+    padding: 14px 14px 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .control-grid,
+  .control-grid-inventory,
+  .kpi-strip,
+  .form-grid-2,
+  .form-grid-3,
+  .form-grid-4,
+  .form-grid-5,
+  .avatar-customizer-grid,
+  .fulfill-stepper,
+  .fulfill-info-grid,
+  .fulfill-final-checklist,
+  .workflow-track {
+    grid-template-columns: 1fr;
+  }
+
+  .order-switcher {
+    display: none;
+  }
+
+  .owner-meta {
+    display: none;
+  }
+}

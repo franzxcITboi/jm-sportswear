@@ -1,0 +1,13 @@
+# Dependencies & Vite cache (re-created automatically on each laptop)
+node_modules/
+.vite/
+.vite-temp/
+
+# Production build output
+dist/
+
+# Editor / OS files
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

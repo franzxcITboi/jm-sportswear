@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Owner/Manager Portal | JM Maker Sportswear</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./src/styles/login.css" />
+  </head>
+  <body>
+    <!-- VIEW 1: OWNER AUTHENTICATION (SIGN IN & OWNER ACCOUNT CREATION) -->
+    <div id="authView" class="login-container">
+      <div class="login-card">
+        <div class="logo-box">
+          <img id="brandLogo" src="./images/logo.png" alt="JM Maker Sportswear Logo" />
+          <h2>JM Maker Sportswear</h2>
+          <p class="verse">Philippians 1:6</p>
+          <p class="motto">To God Be All The Glory</p>
+          <p class="founded-date">Founded July 12, 2022</p>
+        </div>
+
+        <div id="statusBanner" class="status-banner" role="status" aria-live="polite" hidden></div>
+
+        <!-- Owner Sign-In Form -->
+        <form id="loginForm" novalidate>
+          <div class="input-group">
+            <label for="email">Email / Username</label>
+            <div class="input-icon-wrapper">
+              <span class="input-lead-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </span>
+              <input
+                type="email"
+                id="email"
+                placeholder="Enter your Gmail address"
+                autocomplete="username"
+              />
+            </div>
+            <span class="error-msg" id="emailError"></span>
+          </div>
+
+          <div class="input-group">
+            <div class="label-row">
+              <label for="password">Password</label>
+              <a href="#" id="forgotPasswordLink" class="forgot-link">Forgot Password?</a>
+            </div>
+            <div class="password-wrapper has-lead-icon">
+              <span class="input-lead-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </span>
+              <input
+                type="password"
+                id="password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+              />
+              <button
+                type="button"
+                id="togglePasswordBtn"
+                class="toggle-password-btn"
+                aria-label="Show password"
+              >
+                Show
+              </button>
+            </div>
+            <span class="caps-warning" id="capsLockWarning" hidden>&#9888; Caps Lock is ON</span>
+            <span class="error-msg" id="passwordError"></span>
+          </div>
+
+          <div class="form-options">
+            <label class="remember-label" for="rememberMe">
+              <input type="checkbox" id="rememberMe" />
+              <span>Remember my email</span>
+            </label>
+          </div>
+
+          <button type="submit" id="loginBtn" class="login-btn">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-text">Sign In</span>
+          </button>
+        </form>
+
+        <!-- Owner/Manager Account Creation Form -->
+        <form id="registerOwnerForm" novalidate hidden>
+          <div class="form-section-badge">Owner/Manager Account Setup</div>
+
+          <div class="input-group">
+            <label for="regOwnerName">Owner/Manager Full Name</label>
+            <input
+              type="text"
+              id="regOwnerName"
+              placeholder="Enter owner/manager full name"
+              autocomplete="name"
+            />
+            <span class="error-msg" id="regOwnerNameError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="regEmail">Owner/Manager Gmail Address</label>
+            <input
+              type="email"
+              id="regEmail"
+              placeholder="Enter your Gmail address"
+              autocomplete="email"
+            />
+            <span class="error-msg" id="regEmailError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="regPassword">Create Password</label>
+            <div class="password-wrapper">
+              <input
+                type="password"
+                id="regPassword"
+                placeholder="At least 6 characters"
+                autocomplete="new-password"
+              />
+              <button
+                type="button"
+                id="toggleRegPasswordBtn"
+                class="toggle-password-btn"
+                aria-label="Show password"
+              >
+                Show
+              </button>
+            </div>
+            <div id="passwordStrengthBox" class="strength-box" hidden>
+              <div class="strength-bars">
+                <span class="strength-bar"></span>
+                <span class="strength-bar"></span>
+                <span class="strength-bar"></span>
+              </div>
+              <span id="passwordStrengthText" class="strength-label"></span>
+            </div>
+            <span class="error-msg" id="regPasswordError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="regConfirmPassword">Confirm Password</label>
+            <input
+              type="password"
+              id="regConfirmPassword"
+              placeholder="Re-enter your password"
+              autocomplete="new-password"
+            />
+            <span class="error-msg" id="regConfirmPasswordError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="regOwnerPin">Owner Security PIN</label>
+            <input
+              type="password"
+              id="regOwnerPin"
+              placeholder="Enter 8-digit founding PIN (07122022)"
+              autocomplete="off"
+            />
+            <span class="error-msg" id="regOwnerPinError"></span>
+          </div>
+
+          <button type="submit" id="registerOwnerBtn" class="login-btn">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-text">Create Owner/Manager Account</span>
+          </button>
+        </form>
+
+        <div class="card-footer">
+          <p class="auth-switch-text">
+            <span id="authSwitchPrompt">Setting up your owner/manager login?</span>
+            <a href="#" id="toggleAuthModeLink" class="auth-switch-link">Create Account</a>
+          </p>
+          <p class="owner-notice">Authorized Owner/Manager Access Only</p>
+        </div>
+      </div>
+
+      <div class="showcase-panel" aria-hidden="true">
+        <img src="./images/showcase-team.jpg" alt="" class="showcase-img" />
+      </div>
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="forgotModalTitle" hidden>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="forgotModalTitle">Reset Owner Password</h3>
+          <button type="button" id="closeForgotModalBtn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+        </div>
+        <p class="modal-desc">
+          Verify your registered Gmail address and Owner Security PIN to set a new password.
+        </p>
+        <form id="forgotForm" novalidate>
+          <div class="input-group">
+            <label for="recoveryEmail">Registered Gmail Address</label>
+            <input type="email" id="recoveryEmail" placeholder="Enter your Gmail address" />
+            <span class="error-msg" id="recoveryError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="recoveryPin">Owner Security PIN</label>
+            <input type="password" id="recoveryPin" placeholder="Enter 8-digit founding PIN (07122022)" />
+            <span class="error-msg" id="recoveryPinError"></span>
+          </div>
+
+          <div class="input-group">
+            <label for="recoveryNewPassword">New Password</label>
+            <div class="password-wrapper">
+              <input type="password" id="recoveryNewPassword" placeholder="Enter new password (min. 6 chars)" />
+              <button
+                type="button"
+                id="toggleRecoveryPasswordBtn"
+                class="toggle-password-btn"
+                aria-label="Show password"
+              >
+                Show
+              </button>
+            </div>
+            <span class="error-msg" id="recoveryNewPasswordError"></span>
+          </div>
+
+          <div id="recoverySuccess" class="status-banner status-success" hidden></div>
+          <div class="modal-actions">
+            <button type="button" id="cancelForgotBtn" class="secondary-btn">Cancel</button>
+            <button type="submit" id="sendRecoveryBtn" class="login-btn modal-submit-btn">
+              <span class="btn-spinner" aria-hidden="true"></span>
+              <span class="btn-text">Update Password</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="./src/pages/loginEntry.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "jm-sportswear",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes vite --host localhost --port 5173 --open",
+    "start": "npx --yes vite --host localhost --port 5173",
+    "build": "npx --yes vite build",
+    "preview": "npx --yes vite preview --port 5173"
+  }
+}
