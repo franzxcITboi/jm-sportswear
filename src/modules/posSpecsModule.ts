@@ -42,6 +42,7 @@ const LIVE_CALC_INPUT_IDS = new Set([
   "pSizeXL",
   "pSizeXXL",
   "posSublimationSelect",
+  "posDiscountInput",
   "posInitialPaidInput",
 ]);
 
@@ -110,7 +111,29 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
         ? ORDER_PACKAGE_OPTIONS[0].price
         : SUBLIMATION_PRICES[activeOrder.sublimationType] ||
           activeOrder.unitPrice;
-    const computed = computeOrderTotals(s, currentUnitPrice);
+    const currentDiscount =
+      formMode === "create" || !activeOrder
+        ? 0
+        : Math.max(0, Number(activeOrder.discountAmount) || 0);
+    const computed = computeOrderTotals(s, currentUnitPrice, currentDiscount);
+
+    const activeStaffList = (ctx.state.staffMembers || []).filter(
+      (st) => st.accountStatus === "Active"
+    );
+    const assignedStaffObj = activeOrder?.assignedStaffId
+      ? (ctx.state.staffMembers || []).find(
+          (st) => st.id === activeOrder.assignedStaffId
+        )
+      : undefined;
+    const staffAssignOptions = activeStaffList
+      .map((st) => {
+        const selected =
+          formMode === "edit" && activeOrder?.assignedStaffId === st.id
+            ? "selected"
+            : "";
+        return `<option value="${st.id}" ${selected}>${st.fullName} — ${st.positionTitle}</option>`;
+      })
+      .join("");
 
     const currentTemplateImg =
       formMode === "create" || !activeOrder
@@ -151,6 +174,10 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       currentUnitPrice
     )}${
       xxlSurcharge > 0 ? ` + ${s.XXL} XXL+ (${formatPeso(xxlSurcharge)})` : ""
+    }${
+      computed.discountAmount > 0
+        ? ` \u2212 Discount (${formatPeso(computed.discountAmount)})`
+        : ""
     } = ${formatPeso(displayAutoTotal, true)}`;
 
     const rightPanelHtml = activeOrder
@@ -181,6 +208,14 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
         } pcs (${formatSizeSummary(activeOrder.sizes)})</p>
             <p class="spec-subdetail">${activeOrder.colorway} &bull; ${
           activeOrder.printingOption
+        }${
+          activeOrder.clientContact
+            ? ` &bull; Contact: <strong>${activeOrder.clientContact}</strong>`
+            : ""
+        }${
+          assignedStaffObj
+            ? ` &bull; Assigned: <strong>${assignedStaffObj.fullName}</strong>`
+            : ""
         }</p>
 
             <div class="pos-billing-box">
@@ -202,7 +237,13 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
                 </div>
                 <span style="font-size:0.77rem;color:var(--text-secondary);">Paid so far: <strong>${formatPeso(
                   activeOrder.amountPaid
-                )}</strong></span>
+                )}</strong>${
+          (activeOrder.discountAmount || 0) > 0
+            ? ` &bull; Discount applied: <strong>${formatPeso(
+                activeOrder.discountAmount || 0
+              )}</strong>`
+            : ""
+        }</span>
               </div>
               <button type="button" id="posPrintReceiptBtn" class="btn btn-receipt">
                 Print Invoice
@@ -350,8 +391,26 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
                 }" placeholder="Enter customer or team name" required />
               </div>
               <div class="field">
+                <label for="posClientContactInput">Customer Contact (Phone / Messenger)</label>
+                <input type="text" id="posClientContactInput" value="${
+                  formMode === "create" || !activeOrder
+                    ? ""
+                    : activeOrder.clientContact || ""
+                }" placeholder="e.g., 0917-123-4567 or FB Name" />
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="field">
                 <label for="posSublimationSelect">Apparel Package</label>
                 <select id="posSublimationSelect">${subOptions}</select>
+              </div>
+              <div class="field">
+                <label for="posAssignedStaffSelect">Assigned Staff (Optional)</label>
+                <select id="posAssignedStaffSelect">
+                  <option value="">— Owner / Unassigned —</option>
+                  ${staffAssignOptions}
+                </select>
               </div>
             </div>
 
@@ -422,15 +481,19 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
               </div>
             </div>
 
-            <div class="form-grid-2">
+            <div class="form-grid-3">
               <div class="field">
-                <label for="posAutoTotalInput">Auto-Computed Order Total (\u20B1)</label>
+                <label for="posDiscountInput">Discount (\u20B1)</label>
+                <input type="number" id="posDiscountInput" min="0" step="10" value="${currentDiscount}" placeholder="0" />
+              </div>
+              <div class="field">
+                <label for="posAutoTotalInput">Net Order Total (\u20B1)</label>
                 <input type="number" id="posAutoTotalInput" value="${displayAutoTotal}" readonly style="font-weight:700;color:var(--brand-red);" />
               </div>
               <div class="field">
                 <label for="posInitialPaidInput">${
                   formMode === "create" || !activeOrder
-                    ? "Initial Cash Deposit Paid (\u20B1)"
+                    ? "Initial Cash Deposit (\u20B1)"
                     : "Amount Paid (\u20B1)"
                 }</label>
                 <input type="number" id="posInitialPaidInput" min="0" value="${displayPaid}" ${
@@ -504,6 +567,9 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
     const subSelect = document.getElementById(
       "posSublimationSelect"
     ) as HTMLSelectElement | null;
+    const discountInput = document.getElementById(
+      "posDiscountInput"
+    ) as HTMLInputElement | null;
     const totalInput = document.getElementById(
       "posAutoTotalInput"
     ) as HTMLInputElement | null;
@@ -516,7 +582,12 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
 
     const sizes = readSizeInputs();
     const unitPrice = SUBLIMATION_PRICES[subSelect.value] || 800;
-    const { totalQty, totalAmount } = computeOrderTotals(sizes, unitPrice);
+    const rawDiscount = Math.max(0, Number(discountInput?.value) || 0);
+    const { totalQty, discountAmount, totalAmount } = computeOrderTotals(
+      sizes,
+      unitPrice,
+      rawDiscount
+    );
     totalInput.value = String(totalAmount);
 
     const paid = Math.max(0, Number(paidInput?.value) || 0);
@@ -528,6 +599,10 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
         unitPrice
       )}${
         xxlExtra > 0 ? ` + ${sizes.XXL} XXL+ (${formatPeso(xxlExtra)})` : ""
+      }${
+        discountAmount > 0
+          ? ` \u2212 Discount (${formatPeso(discountAmount)})`
+          : ""
       } = ${formatPeso(totalAmount, true)}`;
     }
     if (balanceEl) {
@@ -687,10 +762,13 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       const order = getSelectedOrder(ctx.state);
       if (!order) return;
       const bal = Math.max(0, order.totalAmount - order.amountPaid);
+      const disc = Math.max(0, Number(order.discountAmount) || 0);
+      const grossSubtotal = order.totalAmount + disc;
       appendAuditLog(
         ctx.state,
         "Checkout",
-        `Printed order invoice for Order #${order.id} (${order.clientName}).`
+        `Printed order invoice for Order #${order.id} (${order.clientName}).`,
+        { actionType: "payment", relatedOrderId: order.id }
       );
       ctx.refreshAll();
       ctx.printHtml(`
@@ -701,10 +779,15 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
           </div>
           <p><strong>Order ID:</strong> #${order.id}</p>
           <p><strong>Customer:</strong> ${order.clientName}</p>
+          ${
+            order.clientContact
+              ? `<p><strong>Contact Info:</strong> ${order.clientContact}</p>`
+              : ""
+          }
           <p><strong>Date Issued:</strong> ${new Date().toLocaleString()}</p>
           <table class="print-table">
             <thead>
-              <tr><th>Item &amp; Customization</th><th>Sizes</th><th>Qty</th><th>Total</th></tr>
+              <tr><th>Item &amp; Customization</th><th>Sizes</th><th>Qty</th><th>Subtotal</th></tr>
             </thead>
             <tbody>
               <tr>
@@ -713,10 +796,22 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       }</small></td>
                 <td>${formatSizeSummary(order.sizes)}</td>
                 <td>${order.totalQty} pcs</td>
-                <td>${formatPeso(order.totalAmount, true)}</td>
+                <td>${formatPeso(grossSubtotal, true)}</td>
               </tr>
             </tbody>
           </table>
+          ${
+            disc > 0
+              ? `<p><strong>Discount Applied:</strong> &minus;${formatPeso(
+                  disc,
+                  true
+                )}</p>`
+              : ""
+          }
+          <p><strong>Net Order Total:</strong> ${formatPeso(
+            order.totalAmount,
+            true
+          )}</p>
           <p><strong>Amount Paid:</strong> ${formatPeso(
             order.amountPaid,
             true
@@ -735,9 +830,16 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
     const clientName = (
       document.getElementById("posClientInput") as HTMLInputElement
     ).value.trim();
+    const clientContact = (
+      (document.getElementById("posClientContactInput") as HTMLInputElement | null)
+        ?.value || ""
+    ).trim();
     const sublimationType = (
       document.getElementById("posSublimationSelect") as HTMLSelectElement
     ).value;
+    const assignedStaffId =
+      (document.getElementById("posAssignedStaffSelect") as HTMLSelectElement | null)
+        ?.value || undefined;
     const colorway =
       (
         document.getElementById("posColorwayInput") as HTMLInputElement
@@ -746,9 +848,16 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       (
         document.getElementById("posPrintingInput") as HTMLInputElement
       ).value.trim() || "Full Sublimation";
+    const rawDiscount = Math.max(
+      0,
+      Number(
+        (document.getElementById("posDiscountInput") as HTMLInputElement | null)
+          ?.value
+      ) || 0
+    );
     const sizes = readSizeInputs();
     const unitPrice = SUBLIMATION_PRICES[sublimationType] || 800;
-    const computed = computeOrderTotals(sizes, unitPrice);
+    const computed = computeOrderTotals(sizes, unitPrice, rawDiscount);
 
     if (!clientName || computed.totalQty <= 0) {
       ctx.showToast(
@@ -776,17 +885,20 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       const newOrder: CustomOrder = {
         id: nextId,
         clientName,
+        clientContact,
         sublimationType,
         colorway,
         printingOption,
         unitPrice,
         sizes,
         totalQty: computed.totalQty,
+        discountAmount: computed.discountAmount,
         totalAmount: computed.totalAmount,
         amountPaid: downpayment,
         stage: "Order Received",
         specsVerified: false,
         fulfillmentChecklist: createEmptyFulfillmentChecklist(),
+        assignedStaffId,
         createdAt: new Date().toISOString().slice(0, 10),
         jerseyTemplateImage: draftNewTemplateImg,
         jerseyTemplateName: draftNewTemplateName,
@@ -810,7 +922,12 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
           paymentMethod: "Cash",
           amountPaid: downpayment,
           balanceRemaining: bal,
-          remarks: "Initial cash deposit on order creation",
+          remarks:
+            computed.discountAmount > 0
+              ? `Initial cash deposit (Discount: ${formatPeso(
+                  computed.discountAmount
+                )})`
+              : "Initial cash deposit on order creation",
         });
       }
 
@@ -826,7 +943,18 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       appendAuditLog(
         ctx.state,
         "Orders",
-        `Created Order #${newOrder.id} (${newOrder.clientName}) — ${newOrder.totalQty} pcs.`
+        `Created Order #${newOrder.id} (${newOrder.clientName}) — ${
+          newOrder.totalQty
+        } pcs, Net Total: ${formatPeso(newOrder.totalAmount, true)}${
+          computed.discountAmount > 0
+            ? ` (Discount: ${formatPeso(computed.discountAmount)})`
+            : ""
+        }.`,
+        {
+          actionType: "order_update",
+          relatedOrderId: newOrder.id,
+          staffMemberId: assignedStaffId,
+        }
       );
       formMode = "edit";
       ctx.refreshAll();
@@ -835,13 +963,16 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
       );
     } else {
       activeOrder.clientName = clientName;
+      activeOrder.clientContact = clientContact;
       activeOrder.sublimationType = sublimationType;
       activeOrder.colorway = colorway;
       activeOrder.printingOption = printingOption;
       activeOrder.unitPrice = unitPrice;
       activeOrder.sizes = sizes;
       activeOrder.totalQty = computed.totalQty;
+      activeOrder.discountAmount = computed.discountAmount;
       activeOrder.totalAmount = computed.totalAmount;
+      activeOrder.assignedStaffId = assignedStaffId;
 
       const newBal = Math.max(
         0,
@@ -861,7 +992,16 @@ export function initPosSpecsModule(ctx: ModuleContext): { render: () => void } {
         "Orders",
         `Updated customization details for Order #${activeOrder.id} (${
           activeOrder.clientName
-        }) — Total: ${formatPeso(activeOrder.totalAmount, true)}.`
+        }) — Net Total: ${formatPeso(activeOrder.totalAmount, true)}${
+          computed.discountAmount > 0
+            ? ` (Discount: ${formatPeso(computed.discountAmount)})`
+            : ""
+        }.`,
+        {
+          actionType: "order_update",
+          relatedOrderId: activeOrder.id,
+          staffMemberId: assignedStaffId,
+        }
       );
       ctx.refreshAll();
       ctx.showToast(

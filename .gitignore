@@ -6,6 +6,14 @@ node_modules/
 # Production build output
 dist/
 
+# Local environment secrets (NEVER commit Supabase keys)
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI local runtime cache
+supabase/.temp/
+
 # Editor / OS files
 .vscode/
 .DS_Store

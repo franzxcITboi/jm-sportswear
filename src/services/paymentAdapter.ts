@@ -1,10 +1,10 @@
 // ============================================================================
-// JM MAKER SPORTSWEAR — FRONTEND PAYMENT VERIFICATION ADAPTER BOUNDARY
-// Clean interface isolating UI modules from temporary localStorage so Phase 2
-// Supabase backend services (Postgres, Storage, Edge Functions, RLS) plug in
-// without rewriting any UI components.
+// JM MAKER SPORTSWEAR — PAYMENT VERIFICATION ADAPTER BOUNDARY
+// Unifies Supabase PostgreSQL RPCs (when configured) with localStorage fallback
+// so UI modules and buyer.html work identically in both modes without rewrites.
 // ============================================================================
 
+import { getDataStorageMode, isSupabaseConfigured } from "../lib/supabaseClient";
 import type { OwnerSession } from "../types/auth.types";
 import type {
   PaymentAccountInstruction,
@@ -31,6 +31,10 @@ import {
   verifyPaymentProofSubmission,
 } from "./paymentProofService";
 import type { TokenizedSubmissionPayload } from "./paymentValidation";
+import {
+  resolveVerificationLinkFromSupabase,
+  submitTokenizedProofToSupabase,
+} from "./supabaseRepository";
 
 export interface IPaymentDataAdapter {
   readonly mode: "frontend-local" | "supabase";
@@ -45,10 +49,16 @@ export interface IPaymentDataAdapter {
     linkId: string
   ): ServiceResult<PaymentVerificationLink>;
   resolveVerificationLink(token: string | null): ResolvedVerificationLink;
+  resolveVerificationLinkAsync(
+    token: string | null
+  ): Promise<ResolvedVerificationLink>;
   buildVerificationUrl(token: string): string;
   submitTokenizedProof(
     payload: TokenizedSubmissionPayload
   ): ServiceResult<PaymentProofSubmission>;
+  submitTokenizedProofAsync(
+    payload: TokenizedSubmissionPayload
+  ): Promise<ServiceResult<PaymentProofSubmission>>;
   verifySubmission(
     state: SystemState,
     ownerSession: OwnerSession | null,
@@ -64,9 +74,11 @@ export interface IPaymentDataAdapter {
   ): ServiceResult<PaymentAccountInstruction>;
 }
 
-/** Frontend-only local state adapter (Phase 1 — Supabase ready for Phase 2). */
+/** Dual-mode adapter: routes to Supabase RPCs when configured, else localStorage. */
 export const paymentAdapter: IPaymentDataAdapter = {
-  mode: "frontend-local",
+  get mode() {
+    return getDataStorageMode();
+  },
 
   createVerificationLink(state, ownerSession, input) {
     return createPaymentVerificationLink(state, ownerSession, input);
@@ -80,11 +92,25 @@ export const paymentAdapter: IPaymentDataAdapter = {
     return resolvePaymentVerificationLink(token);
   },
 
+  async resolveVerificationLinkAsync(token) {
+    if (isSupabaseConfigured()) {
+      return resolveVerificationLinkFromSupabase(token);
+    }
+    return resolvePaymentVerificationLink(token);
+  },
+
   buildVerificationUrl(token) {
     return buildPaymentVerificationUrl(token);
   },
 
   submitTokenizedProof(payload) {
+    return submitTokenizedPaymentProof(payload);
+  },
+
+  async submitTokenizedProofAsync(payload) {
+    if (isSupabaseConfigured()) {
+      return submitTokenizedProofToSupabase(payload);
+    }
     return submitTokenizedPaymentProof(payload);
   },
 

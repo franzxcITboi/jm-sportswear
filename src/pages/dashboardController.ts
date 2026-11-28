@@ -5,9 +5,13 @@
 // business feature modules.
 // ============================================================================
 
-import { getOwnerAvatar } from "../components/avatarBuilder";
+import {
+  getOwnerAvatar,
+  saveOwnerAvatarConfig,
+} from "../components/avatarBuilder";
 import { initAvatarCustomizationModal } from "../components/avatarModal";
 import { STORAGE_KEY, THEME_STORAGE_KEY } from "../config/constants";
+import { isSupabaseConfigured } from "../lib/supabaseClient";
 import { initWorkflowModule } from "../modules/fulfillment/fulfillmentModule";
 import { initInventoryModule } from "../modules/inventoryModule";
 import type { ModuleContext } from "../modules/moduleTypes";
@@ -17,12 +21,22 @@ import { initPaymentVerificationModule } from "../modules/paymentVerificationMod
 import { initPosSpecsModule } from "../modules/posSpecsModule";
 import { initAnalyticsUtilitiesModule } from "../modules/reports/salesReportsModule";
 import { initSalesLogbookModule } from "../modules/salesLogbookModule";
+import { initStaffMonitoringModule } from "../modules/staff/staffMonitoringModule";
 import {
-  clearOwnerSession,
+  canAccessPage,
   getOwnerSession,
-  isOwnerAuthorized,
+  hydrateOwnerSessionAsync,
+  isSessionAuthenticated,
+  signOutOwnerAsync,
 } from "../services/authService";
 import {
+  fetchFullSystemStateFromSupabase,
+  queueSupabaseStateSync,
+  subscribeToRealtimeStoreChanges,
+  updateOwnerProfileInSupabase,
+} from "../services/supabaseRepository";
+import {
+  appendAuditLog,
   getSelectedOrder,
   loadSystemState,
   saveSystemState,
@@ -56,8 +70,12 @@ const PAGE_META: Record<PageId, { title: string; desc: string }> = {
     desc: "Consolidated transaction logbook with multi-unit sales calculation, search, and date range filtering.",
   },
   analytics: {
-    title: "Monthly & Annual Sales Reports",
-    desc: "Analyze monthly and annual revenue trends, product sales breakdowns, visual charts, and local data backups.",
+    title: "Sales Analytics & Reports",
+    desc: "Analyze daily, weekly, monthly, and annual revenue trends, order volume, inventory movement, CSV/PDF exports, and database backup & recovery.",
+  },
+  "staff-monitoring": {
+    title: "Staff Monitoring & Audit Trail",
+    desc: "Manage staff profiles and RBAC permissions, assign and track operational tasks, and review the immutable activity and login audit trail.",
   },
   notifications: {
     title: "Notifications & Store Alerts",
@@ -67,6 +85,8 @@ const PAGE_META: Record<PageId, { title: string; desc: string }> = {
 
 const state: SystemState = loadSystemState();
 let currentPage: PageId = "overview";
+let activeOwnerUserId: string | undefined;
+let isHydratingFromRemote = false;
 let toastTimer: number | undefined;
 
 function showToast(message: string): void {
@@ -114,6 +134,11 @@ function closeMobileSidebar(): void {
 const ctx: ModuleContext = {
   state,
   navigateTo: (page: PageId, orderId?: string) => {
+    const activeSession = getOwnerSession();
+    if (!canAccessPage(activeSession, page)) {
+      showToast("Access restricted: Your account does not have permission for that module.");
+      return;
+    }
     if (orderId) {
       state.selectedOrderId = orderId;
     }
@@ -129,7 +154,7 @@ const ctx: ModuleContext = {
   openImagePreview,
 };
 
-// Register all 8 separated dashboard modules
+// Register all 9 separated dashboard modules
 const modules = [
   initOverviewModule(ctx),
   initPosSpecsModule(ctx),
@@ -138,6 +163,7 @@ const modules = [
   initPaymentVerificationModule(ctx),
   initSalesLogbookModule(ctx),
   initAnalyticsUtilitiesModule(ctx),
+  initStaffMonitoringModule(ctx),
   initNotificationsModule(ctx),
 ];
 
@@ -205,6 +231,9 @@ function refreshAll(): void {
   saveSystemState(state);
   renderGlobalOrderSelector();
   modules.forEach((mod) => mod.render());
+  if (!isHydratingFromRemote && activeOwnerUserId && isSupabaseConfigured()) {
+    void queueSupabaseStateSync(activeOwnerUserId, state);
+  }
 }
 
 /**
@@ -251,13 +280,49 @@ function initSidebarControls(): void {
   });
 }
 
-function initDashboardShell(): void {
-  // Enforce owner-only authentication guard
-  const session = getOwnerSession();
-  if (!isOwnerAuthorized(session)) {
+async function hydrateFromSupabase(ownerId: string): Promise<void> {
+  if (!isSupabaseConfigured() || !ownerId) return;
+  const bundle = await fetchFullSystemStateFromSupabase(ownerId);
+  if (!bundle) return;
+
+  isHydratingFromRemote = true;
+  Object.assign(state, bundle.state);
+  saveSystemState(state);
+
+  if (bundle.profile?.theme_preference) {
+    applyTheme(bundle.profile.theme_preference);
+  }
+  if (bundle.avatarConfig) {
+    saveOwnerAvatarConfig(bundle.avatarConfig);
+    const avatarImg = document.getElementById(
+      "ownerAvatarImg"
+    ) as HTMLImageElement | null;
+    if (avatarImg) avatarImg.src = getOwnerAvatar();
+  }
+
+  renderGlobalOrderSelector();
+  modules.forEach((mod) => mod.render());
+  isHydratingFromRemote = false;
+}
+
+async function initDashboardShell(): Promise<void> {
+  // Enforce authentication guard (Owner/Manager or active RBAC Staff account)
+  const session = await hydrateOwnerSessionAsync();
+  if (!isSessionAuthenticated(session)) {
     window.location.replace("./index.html");
     return;
   }
+  activeOwnerUserId = session?.userId;
+
+  // Apply RBAC visibility on sidebar navigation buttons
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-nav-page]")
+    .forEach((btn) => {
+      const pageId = btn.getAttribute("data-nav-page") as PageId | null;
+      if (pageId && !canAccessPage(session, pageId)) {
+        btn.hidden = true;
+      }
+    });
 
   const savedTheme =
     localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
@@ -265,9 +330,19 @@ function initDashboardShell(): void {
 
   const ownerDisplay = document.getElementById("ownerDisplayName");
   const modalOwnerName = document.getElementById("avatarModalOwnerName");
+  const roleHintEl = document.querySelector(".owner-photo-hint");
   if (session) {
     if (ownerDisplay) ownerDisplay.textContent = session.ownerName;
     if (modalOwnerName) modalOwnerName.textContent = session.ownerName;
+    if (roleHintEl) {
+      const roleLabel =
+        session.role === "staff"
+          ? "Staff Account"
+          : session.role === "supervisor"
+          ? "Supervisor"
+          : "Owner/Manager";
+      roleHintEl.textContent = `${roleLabel} \u2022 Avatar`;
+    }
   }
 
   const avatarImg = document.getElementById(
@@ -298,7 +373,13 @@ function initDashboardShell(): void {
       document.documentElement.getAttribute("data-theme") === "dark"
         ? "dark"
         : "light";
-    applyTheme(current === "dark" ? "light" : "dark");
+    const nextTheme = current === "dark" ? "light" : "dark";
+    applyTheme(nextTheme);
+    if (activeOwnerUserId && isSupabaseConfigured()) {
+      void updateOwnerProfileInSupabase(activeOwnerUserId, {
+        themePreference: nextTheme,
+      });
+    }
   });
 
   // Home / Overview navigation shortcuts
@@ -325,13 +406,31 @@ function initDashboardShell(): void {
     .getElementById("topbarNotifBtn")
     ?.addEventListener("click", () => ctx.navigateTo("notifications"));
 
-  // Sign Out button
-  document.getElementById("signOutBtn")?.addEventListener("click", () => {
-    clearOwnerSession();
-    window.location.href = "./index.html";
-  });
+  // Sign Out button (records immutable logout entry before ending session)
+  document
+    .getElementById("signOutBtn")
+    ?.addEventListener("click", async () => {
+      const currentSession = getOwnerSession();
+      appendAuditLog(
+        state,
+        "Authentication",
+        `${currentSession?.ownerName || "User"} signed out of JM Maker Sportswear.`,
+        {
+          actionType: "logout",
+          actorName: currentSession?.ownerName,
+          actorRole: currentSession?.role,
+          staffMemberId: currentSession?.staffMemberId,
+        }
+      );
+      saveSystemState(state);
+      if (activeOwnerUserId && isSupabaseConfigured()) {
+        await queueSupabaseStateSync(activeOwnerUserId, state);
+      }
+      await signOutOwnerAsync();
+      window.location.href = "./index.html";
+    });
 
-  // Cross-tab localStorage sync when buyers submit payment proofs in buyer.html
+  // Cross-tab localStorage sync (when running locally in the same browser)
   window.addEventListener("storage", (e) => {
     if (e.key === STORAGE_KEY) {
       syncFromExternalStorage();
@@ -339,7 +438,18 @@ function initDashboardShell(): void {
   });
 
   updatePageVisibility();
-  refreshAll();
+
+  // Hydrate authoritative data from Supabase PostgreSQL and subscribe to Realtime
+  if (activeOwnerUserId && isSupabaseConfigured()) {
+    await hydrateFromSupabase(activeOwnerUserId);
+    subscribeToRealtimeStoreChanges(activeOwnerUserId, () => {
+      if (activeOwnerUserId) {
+        void hydrateFromSupabase(activeOwnerUserId);
+      }
+    });
+  } else {
+    refreshAll();
+  }
 }
 
-initDashboardShell();
+void initDashboardShell();

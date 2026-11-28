@@ -66,7 +66,8 @@ function renderSizeBadges(sizes: SizeBreakdown): string {
 
 export function renderActiveFulfillmentWorkspace(
   order: CustomOrder,
-  inlineErrorMsg: string
+  inlineErrorMsg: string,
+  assignedStaffName?: string
 ): string {
   const checklist = getOrderChecklist(order);
   const balance = Math.max(0, order.totalAmount - order.amountPaid);
@@ -214,6 +215,16 @@ export function renderActiveFulfillmentWorkspace(
                 ? order.clientName
                 : `<span style="color:var(--brand-red);">Missing customer name</span>`
             }</strong>
+            ${
+              order.clientContact
+                ? `<small style="color:var(--text-muted);display:block;">Contact: ${order.clientContact}</small>`
+                : ""
+            }
+            ${
+              assignedStaffName
+                ? `<small style="color:var(--text-muted);display:block;">Assigned Staff: ${assignedStaffName}</small>`
+                : ""
+            }
           </div>
           <div class="fulfill-info-cell">
             <span>Apparel Package &amp; Quantity</span>

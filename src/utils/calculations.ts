@@ -32,13 +32,19 @@ export function computeStockStatus(
 }
 
 /**
- * Computes total piece quantity and total amount for a custom order,
- * including the per-piece XXL+ surcharge.
+ * Computes total piece quantity, gross subtotal, clamped discount, and net
+ * payable total for a custom order (including the per-piece XXL+ surcharge).
  */
 export function computeOrderTotals(
   sizes: SizeBreakdown,
-  unitPrice: number
-): { totalQty: number; totalAmount: number } {
+  unitPrice: number,
+  discountAmount = 0
+): {
+  totalQty: number;
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+} {
   const totalQty =
     (Number(sizes.XS) || 0) +
     (Number(sizes.S) || 0) +
@@ -48,8 +54,10 @@ export function computeOrderTotals(
     (Number(sizes.XXL) || 0);
 
   const xxlSurcharge = (Number(sizes.XXL) || 0) * XXL_SURCHARGE_PER_PIECE;
-  const totalAmount = totalQty * unitPrice + xxlSurcharge;
-  return { totalQty, totalAmount };
+  const subtotal = totalQty * unitPrice + xxlSurcharge;
+  const safeDiscount = Math.min(subtotal, Math.max(0, Number(discountAmount) || 0));
+  const totalAmount = Math.max(0, subtotal - safeDiscount);
+  return { totalQty, subtotal, discountAmount: safeDiscount, totalAmount };
 }
 
 /**

@@ -8,5 +8,8 @@
     "start": "npx --yes vite --host localhost --port 5173",
     "build": "npx --yes vite build",
     "preview": "npx --yes vite preview --port 5173"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2"
   }
 }

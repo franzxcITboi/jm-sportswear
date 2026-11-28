@@ -525,7 +525,8 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
         appendAuditLog(
           ctx.state,
           "Inventory",
-          `Updated product image for "${item.itemName}".`
+          `Updated product image for "${item.itemName}".`,
+          { actionType: "inventory_update" }
         );
         ctx.refreshAll();
         ctx.showToast(`Updated image for "${item.itemName}".`);
@@ -637,15 +638,17 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
       }
       const item = ctx.state.inventory.find((i) => i.id === id);
       if (item) {
+        const previousPrice = item.unitPrice || 0;
         item.unitPrice = newPrice;
         editingPriceItemId = null;
         appendAuditLog(
           ctx.state,
           "Inventory",
-          `Updated selling price of "${item.itemName}" to ${formatPeso(
-            newPrice,
+          `Updated selling price of "${item.itemName}" from ${formatPeso(
+            previousPrice,
             true
-          )}.`
+          )} to ${formatPeso(newPrice, true)}.`,
+          { actionType: "price_change" }
         );
         ctx.refreshAll();
         ctx.showToast(
@@ -689,7 +692,8 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
         "Inventory",
         `Adjusted ${item.itemName} stock by ${
           delta > 0 ? `+${delta}` : delta
-        } pcs (Now: ${item.qty} pcs — ${item.status}).`
+        } pcs (Now: ${item.qty} pcs — ${item.status}).`,
+        { actionType: "inventory_update" }
       );
       ctx.refreshAll();
       return;
@@ -767,7 +771,8 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
       appendAuditLog(
         ctx.state,
         "Inventory",
-        `Saved product "${name}" (${qty} pcs @ ${formatPeso(unitPrice, true)}).`
+        `Saved product "${name}" (${qty} pcs @ ${formatPeso(unitPrice, true)}).`,
+        { actionType: "inventory_update" }
       );
       ctx.refreshAll();
       ctx.showToast(
@@ -833,12 +838,21 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
         remarks: `${qtySold} pcs × ${formatPeso(unitPrice)} (${stockItem.status})`,
       });
 
+      const lowThreshold = stockItem.lowStockThreshold || 10;
       if (stockItem.qty === 0) {
         pushNotification(ctx.state, {
           title: `Out of Stock — ${stockItem.itemName}`,
           message: `${stockItem.itemName} reached 0 pcs after selling ${qtySold} pcs (${entry.logNo}).`,
           category: "Inventory",
           severity: "urgent",
+          targetPage: "inventory",
+        });
+      } else if (stockItem.qty <= lowThreshold) {
+        pushNotification(ctx.state, {
+          title: `Low Stock Alert — ${stockItem.itemName}`,
+          message: `${stockItem.itemName} has ${stockItem.qty} pcs remaining after ${entry.logNo}.`,
+          category: "Inventory",
+          severity: "warning",
           targetPage: "inventory",
         });
       }
@@ -848,7 +862,8 @@ export function initInventoryModule(ctx: ModuleContext): { render: () => void } 
         "Sales",
         `Sold ${qtySold} pcs of "${stockItem.itemName}" (${formatPeso(
           unitPrice
-        )}/pc = ${formatPeso(totalAmount, true)}) in ${entry.logNo}.`
+        )}/pc = ${formatPeso(totalAmount, true)}) in ${entry.logNo}.`,
+        { actionType: "payment" }
       );
       ctx.refreshAll();
       ctx.showToast(

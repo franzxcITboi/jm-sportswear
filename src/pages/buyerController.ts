@@ -128,11 +128,11 @@ function showConfirmationState(
   }
 }
 
-function renderTokenPage(): void {
+async function renderTokenPage(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   activeToken = (params.get("token") || "").trim();
 
-  const resolved = paymentAdapter.resolveVerificationLink(activeToken);
+  const resolved = await paymentAdapter.resolveVerificationLinkAsync(activeToken);
 
   if (!resolved.valid || !resolved.link) {
     const titleMap: Record<string, string> = {
@@ -271,7 +271,7 @@ function initDirectVerificationPage(): void {
 
   document
     .getElementById("paymentVerificationForm")
-    ?.addEventListener("submit", (e) => {
+    ?.addEventListener("submit", async (e) => {
       e.preventDefault();
       showFormError("");
 
@@ -281,8 +281,16 @@ function initDirectVerificationPage(): void {
       const notesInput = document.getElementById(
         "additionalNotesInput"
       ) as HTMLTextAreaElement;
+      const submitBtn = document.getElementById(
+        "submitProofBtn"
+      ) as HTMLButtonElement | null;
 
-      const result = paymentAdapter.submitTokenizedProof({
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submitting Payment Proof...";
+      }
+
+      const result = await paymentAdapter.submitTokenizedProofAsync({
         token: activeToken,
         referenceNumber: refInput.value,
         buyerNotes: notesInput.value,
@@ -291,6 +299,11 @@ function initDirectVerificationPage(): void {
         proofMimeType: stagedMimeType,
         proofFileSizeBytes: stagedFileSizeBytes,
       });
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit Payment Proof";
+      }
 
       if (!result.success || !result.data) {
         showFormError(result.error || "Unable to submit payment proof.");
@@ -301,7 +314,9 @@ function initDirectVerificationPage(): void {
       refInput.value = "";
       notesInput.value = "";
 
-      const resolved = paymentAdapter.resolveVerificationLink(activeToken);
+      const resolved = await paymentAdapter.resolveVerificationLinkAsync(
+        activeToken
+      );
       if (resolved.link) {
         showConfirmationState(resolved.link, result.data);
       }
@@ -310,11 +325,11 @@ function initDirectVerificationPage(): void {
   // Live update if the Owner/Manager approves, rejects, or revokes in another tab
   window.addEventListener("storage", (e) => {
     if (e.key === STORAGE_KEY) {
-      renderTokenPage();
+      void renderTokenPage();
     }
   });
 
-  renderTokenPage();
+  void renderTokenPage();
 }
 
 initDirectVerificationPage();

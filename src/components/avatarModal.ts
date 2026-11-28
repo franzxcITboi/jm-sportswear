@@ -18,6 +18,8 @@ import type {
   CharacterHairStyle,
   OwnerAvatarConfig,
 } from "../types/system.types";
+import { getOwnerSession } from "../services/authService";
+import { updateOwnerProfileInSupabase } from "../services/supabaseRepository";
 import { compressImageFile } from "../utils/imageCompressor";
 import { logError } from "../utils/logger";
 import {
@@ -276,6 +278,12 @@ export function initAvatarCustomizationModal(
     .getElementById("saveProfileAvatarBtn")
     ?.addEventListener("click", () => {
       saveOwnerAvatarConfig(draftConfig);
+      const session = getOwnerSession();
+      if (session?.userId) {
+        void updateOwnerProfileInSupabase(session.userId, {
+          avatarConfig: draftConfig,
+        });
+      }
       if (avatarImg) {
         avatarImg.src = getOwnerAvatar();
       }

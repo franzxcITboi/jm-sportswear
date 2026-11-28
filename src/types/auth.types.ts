@@ -1,6 +1,7 @@
 // ============================================================================
-// JM MAKER SPORTSWEAR — AUTHENTICATION TYPES
-// Single-operator (Owner/Manager) authentication data models.
+// JM MAKER SPORTSWEAR — AUTHENTICATION & ACCESS CONTROL TYPES
+// Supports Owner/Manager full administration plus Owner-managed Staff accounts
+// with Role-Based Access Control (RBAC) module permissions (Capstone Obj. 4).
 // ============================================================================
 
 export interface LoginFormValues {
@@ -42,9 +43,20 @@ export interface OwnerAccount {
   createdAt: string;
 }
 
+export interface SessionModulePermissions {
+  canManagePOS: boolean;
+  canManageOrders: boolean;
+  canManageInventory: boolean;
+  canVerifyPayments: boolean;
+  canViewReports: boolean;
+}
+
 export interface OwnerSession {
+  userId?: string;
+  staffMemberId?: string;
   email: string;
   ownerName: string;
   loggedInAt: string;
-  role?: "owner_manager" | "owner";
+  role?: "owner_manager" | "owner" | "supervisor" | "staff";
+  permissions?: SessionModulePermissions;
 }

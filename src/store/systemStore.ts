@@ -10,11 +10,14 @@ import {
   STORAGE_KEY,
 } from "../config/constants";
 import type {
+  AuditActionType,
   CustomOrder,
   FulfillmentChecklist,
   InventoryItem,
   OwnerNotification,
   SalesLogbookEntry,
+  StaffMember,
+  StaffTask,
   StockCondition,
   SystemState,
 } from "../types/system.types";
@@ -59,6 +62,8 @@ export function createEmptySystemState(): SystemState {
     paymentAccounts: [],
     paymentVerificationLinks: [],
     paymentProofSubmissions: [],
+    staffMembers: [],
+    staffTasks: [],
     orders: [],
     inventory: [],
     salesLogbook: [],
@@ -139,12 +144,42 @@ export function loadSystemState(): SystemState {
         ? parsed.selectedOrderId
         : orders[0]?.id || "";
 
+    const staffMembers: StaffMember[] = Array.isArray(parsed.staffMembers)
+      ? parsed.staffMembers.map((s) => ({
+          ...s,
+          contactNumber: s.contactNumber || "",
+          roleLevel: s.roleLevel || "staff",
+          availabilityStatus: s.availabilityStatus || "On Duty",
+          accountStatus: s.accountStatus || "Active",
+          shiftSchedule: s.shiftSchedule || "Mon–Sat 8:00 AM – 5:00 PM",
+          permissions: {
+            canManagePOS: Boolean(s.permissions?.canManagePOS ?? true),
+            canManageOrders: Boolean(s.permissions?.canManageOrders ?? true),
+            canManageInventory: Boolean(s.permissions?.canManageInventory ?? true),
+            canVerifyPayments: Boolean(s.permissions?.canVerifyPayments ?? false),
+            canViewReports: Boolean(s.permissions?.canViewReports ?? false),
+          },
+        }))
+      : [];
+
+    const staffTasks: StaffTask[] = Array.isArray(parsed.staffTasks)
+      ? parsed.staffTasks.map((t) => ({
+          ...t,
+          description: t.description || "",
+          taskType: t.taskType || "Order Production",
+          priority: t.priority || "Normal",
+          status: t.status || "Pending",
+        }))
+      : [];
+
     return {
       ...empty,
       selectedOrderId,
       orders,
       inventory,
       salesLogbook,
+      staffMembers,
+      staffTasks,
       paymentAccounts: Array.isArray(parsed.paymentAccounts)
         ? parsed.paymentAccounts
         : [],
@@ -160,7 +195,14 @@ export function loadSystemState(): SystemState {
         : [],
       baseMonthlyRevenue: 0,
       lastBackupTime: parsed.lastBackupTime || "Not yet backed up",
-      auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
+      auditLogs: Array.isArray(parsed.auditLogs)
+        ? parsed.auditLogs.map((a) => ({
+            ...a,
+            actorName: a.actorName || "JM Maker Owner/Manager",
+            actorRole: a.actorRole || "owner_manager",
+            actionType: a.actionType || inferAuditActionType(a.module, a.action),
+          }))
+        : [],
     };
   } catch (err) {
     logError(
@@ -194,17 +236,85 @@ export function getSelectedOrder(state: SystemState): CustomOrder | null {
   );
 }
 
-/** Appends a timestamped system activity record to the audit log. */
+function readActiveActorFromSession(): {
+  actorName: string;
+  actorRole: string;
+  staffMemberId?: string;
+} {
+  try {
+    const raw =
+      (typeof sessionStorage !== "undefined" &&
+        sessionStorage.getItem("jm_owner_session")) ||
+      (typeof localStorage !== "undefined" &&
+        localStorage.getItem("jm_owner_session"));
+    if (raw) {
+      const parsed = JSON.parse(raw) as {
+        ownerName?: string;
+        role?: string;
+        staffMemberId?: string;
+      };
+      if (parsed?.ownerName) {
+        return {
+          actorName: parsed.ownerName,
+          actorRole: parsed.role || "owner_manager",
+          staffMemberId: parsed.staffMemberId,
+        };
+      }
+    }
+  } catch {
+    // Fallback to default Owner/Manager label
+  }
+  return { actorName: "JM Maker Owner/Manager", actorRole: "owner_manager" };
+}
+
+function inferAuditActionType(
+  moduleName: string,
+  action: string
+): AuditActionType {
+  const m = moduleName.toLowerCase();
+  const a = action.toLowerCase();
+  if (a.includes("signed in") || a.includes("logged in")) return "login";
+  if (a.includes("signed out") || a.includes("logged out")) return "logout";
+  if (a.includes("selling price") || a.includes("price of")) return "price_change";
+  if (m.includes("inventory")) return "inventory_update";
+  if (m.includes("task") || a.includes("task ")) return "task_update";
+  if (m.includes("staff")) return "staff_admin";
+  if (m.includes("payment") || m.includes("checkout") || m.includes("sales")) {
+    return "payment";
+  }
+  if (m.includes("backup") || a.includes("backup") || a.includes("restored")) {
+    return "backup";
+  }
+  if (m.includes("order") || m.includes("fulfillment")) return "order_update";
+  return "system";
+}
+
+/** Appends a timestamped, actor-attributed record to the immutable audit trail. */
 export function appendAuditLog(
   state: SystemState,
   moduleName: string,
-  action: string
+  action: string,
+  meta?: {
+    actionType?: AuditActionType;
+    actorName?: string;
+    actorRole?: string;
+    staffMemberId?: string;
+    relatedOrderId?: string;
+    relatedTaskId?: string;
+  }
 ): void {
+  const activeActor = readActiveActorFromSession();
   state.auditLogs.unshift({
-    id: `LOG-${Date.now()}`,
+    id: `LOG-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     timestamp: formatTimeNow(),
     module: moduleName,
     action,
+    actorName: meta?.actorName || activeActor.actorName,
+    actorRole: meta?.actorRole || activeActor.actorRole,
+    staffMemberId: meta?.staffMemberId || activeActor.staffMemberId,
+    actionType: meta?.actionType || inferAuditActionType(moduleName, action),
+    relatedOrderId: meta?.relatedOrderId,
+    relatedTaskId: meta?.relatedTaskId,
   });
 }
 

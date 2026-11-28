@@ -181,9 +181,14 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
             .join("")
         : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:18px;">No orders match your filter or search.</td></tr>`;
 
+    const assignedStaffName = order.assignedStaffId
+      ? (ctx.state.staffMembers || []).find((s) => s.id === order.assignedStaffId)
+          ?.fullName
+      : undefined;
+
     container.innerHTML = `
       ${kpiHtml}
-      ${renderActiveFulfillmentWorkspace(order, inlineErrorMsg)}
+      ${renderActiveFulfillmentWorkspace(order, inlineErrorMsg, assignedStaffName)}
 
       <section class="module-card">
         <div class="module-top">
@@ -340,7 +345,8 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
       appendAuditLog(
         ctx.state,
         "Fulfillment",
-        `Step 1 completed: Reviewed Order #${order.id} (${order.clientName}) and moved to Step 2 – Prepare Order.`
+        `Step 1 completed: Reviewed Order #${order.id} (${order.clientName}) and moved to Step 2 – Prepare Order.`,
+        { actionType: "order_update", relatedOrderId: order.id }
       );
       ctx.refreshAll();
       ctx.showToast(
@@ -373,7 +379,8 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
       appendAuditLog(
         ctx.state,
         "Fulfillment",
-        `Step 2 completed: Prepared all ${order.totalQty} pcs for Order #${order.id} and moved to Step 3 – Check Order.`
+        `Step 2 completed: Prepared all ${order.totalQty} pcs for Order #${order.id} and moved to Step 3 – Check Order.`,
+        { actionType: "order_update", relatedOrderId: order.id }
       );
       ctx.refreshAll();
       ctx.showToast(
@@ -404,10 +411,19 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
       order.stage = "Ready for Release";
       inlineErrorMsg = "";
       syncCustomOrderInventory(ctx.state, order);
+      pushNotification(ctx.state, {
+        title: `Order Ready for Release — Order #${order.id}`,
+        message: `${order.clientName} (${order.totalQty} pcs) passed Quality Inspection and is ready for customer pickup/release.`,
+        category: "Fulfillment",
+        severity: "info",
+        targetPage: "workflow",
+        linkedOrderId: order.id,
+      });
       appendAuditLog(
         ctx.state,
         "Fulfillment",
-        `Step 3 completed: Verified quantities & quality for Order #${order.id}. Ready for Step 4 – Complete Fulfillment.`
+        `Step 3 completed: Verified quantities & quality for Order #${order.id}. Ready for Step 4 – Complete Fulfillment.`,
+        { actionType: "order_update", relatedOrderId: order.id }
       );
       ctx.refreshAll();
       ctx.showToast(
@@ -472,7 +488,8 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
       appendAuditLog(
         ctx.state,
         "Fulfillment",
-        `Step 4 completed: Marked Order #${order.id} (${order.clientName}, ${order.totalQty} pcs) as Fulfilled.`
+        `Step 4 completed: Marked Order #${order.id} (${order.clientName}, ${order.totalQty} pcs) as Fulfilled.`,
+        { actionType: "order_update", relatedOrderId: order.id }
       );
       ctx.refreshAll();
       ctx.showToast(
@@ -514,7 +531,8 @@ export function initWorkflowModule(ctx: ModuleContext): { render: () => void } {
       appendAuditLog(
         ctx.state,
         "Fulfillment",
-        `Cancelled Order #${ord.id} (${ord.clientName}).`
+        `Cancelled Order #${ord.id} (${ord.clientName}).`,
+        { actionType: "order_update", relatedOrderId: ord.id }
       );
       ctx.refreshAll();
       ctx.showToast(`Order #${ord.id} marked as Cancelled.`);

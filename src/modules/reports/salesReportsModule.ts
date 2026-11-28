@@ -1,16 +1,27 @@
 // ============================================================================
-// JM MAKER SPORTSWEAR — SALES REPORTS, BACKUP & LOCAL RESET MODULE
-// Renders Monthly, Annual, Past Sales Logbook, and Custom Date-Range reports,
-// product charts, JSON snapshot backup, recent activity log, and local reset.
+// JM MAKER SPORTSWEAR — SALES ANALYTICS, REPORTS & DATABASE UTILITIES MODULE
+// Renders Daily, Weekly, Monthly, Annual, Logbook, and Custom Date-Range
+// reports, Order Volume & Inventory Movement analytics, CSV/PDF exports,
+// JSON database backup & restore recovery, and activity summary.
 // ============================================================================
 
+import { STORAGE_KEY } from "../../config/constants";
+import { getOwnerSession, isOwnerManager } from "../../services/authService";
+import {
+  resetOwnerDataInSupabase,
+  updateOwnerProfileInSupabase,
+} from "../../services/supabaseRepository";
 import {
   appendAuditLog,
+  loadSystemState,
   pushNotification,
   resetSystemState,
 } from "../../store/systemStore";
-import type { SalesLogbookEntry } from "../../types/system.types";
-import { computeSalesRevenueBreakdown } from "../../utils/calculations";
+import type { SalesLogbookEntry, SystemState } from "../../types/system.types";
+import {
+  computeSalesRevenueBreakdown,
+  computeStockStatus,
+} from "../../utils/calculations";
 import { restoreInputFocus } from "../../utils/dom";
 import {
   formatPeso,
@@ -22,10 +33,27 @@ import {
   aggregateProductSales,
   buildMonthlySeries,
   buildPrintableSalesReportHtml,
+  buildSalesCsvContent,
   buildYearMonths,
 } from "./salesReportMetrics";
 
-type ReportViewMode = "MONTHLY" | "ANNUAL" | "LOGBOOK" | "CUSTOM";
+type ReportViewMode =
+  | "DAILY"
+  | "WEEKLY"
+  | "MONTHLY"
+  | "ANNUAL"
+  | "LOGBOOK"
+  | "CUSTOM";
+
+function shiftIsoDate(isoDate: string, deltaDays: number): string {
+  const base = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return isoDate;
+  base.setDate(base.getDate() + deltaDays);
+  const y = base.getFullYear();
+  const m = String(base.getMonth() + 1).padStart(2, "0");
+  const d = String(base.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
   render: () => void;
@@ -36,45 +64,70 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
   const monthsCurrentYear = buildYearMonths(currentYear);
 
   let viewMode: ReportViewMode = "MONTHLY";
+  let selectedDay = todayIso;
+  let selectedWeekEnd = todayIso;
   let selectedMonthKey = todayIso.slice(0, 7);
   let customFrom = `${todayIso.slice(0, 7)}-01`;
   let customTo = todayIso;
   let logbookSearch = "";
   let confirmClearLocalData = false;
 
-  function render(): void {
-    if (!container) return;
-
+  function getFilteredEntries(): {
+    activeEntries: SalesLogbookEntry[];
+    activePeriodLabel: string;
+  } {
     const allEntries = ctx.state.salesLogbook || [];
-    const monthlySeries = buildMonthlySeries(allEntries, currentYear);
-
-    let activeEntries: SalesLogbookEntry[] = allEntries;
-    let activePeriodLabel = `All Recorded Sales (${currentYear})`;
-
+    if (viewMode === "DAILY") {
+      return {
+        activeEntries: allEntries.filter(
+          (e) => (e.isoDate || "") === selectedDay
+        ),
+        activePeriodLabel: `Daily Summary (${selectedDay})`,
+      };
+    }
+    if (viewMode === "WEEKLY") {
+      const weekStart = shiftIsoDate(selectedWeekEnd, -6);
+      return {
+        activeEntries: allEntries.filter((e) => {
+          const d = e.isoDate || "";
+          return d >= weekStart && d <= selectedWeekEnd;
+        }),
+        activePeriodLabel: `Weekly Summary (${weekStart} to ${selectedWeekEnd})`,
+      };
+    }
     if (viewMode === "MONTHLY") {
       const monthObj =
         monthsCurrentYear.find((m) => m.key === selectedMonthKey) ||
         monthsCurrentYear[new Date().getMonth()];
-      activeEntries = allEntries.filter(
-        (e) => (e.isoDate || "").slice(0, 7) === selectedMonthKey
-      );
-      activePeriodLabel = monthObj.full;
-    } else if (viewMode === "ANNUAL") {
-      activeEntries = allEntries.filter((e) =>
-        (e.isoDate || "").startsWith(String(currentYear))
-      );
-      activePeriodLabel = `Full Year ${currentYear} (Actual Recorded Sales)`;
-    } else if (viewMode === "CUSTOM") {
-      activeEntries = allEntries.filter((e) => {
-        const d = e.isoDate || "";
-        if (customFrom && d < customFrom) return false;
-        if (customTo && d > customTo) return false;
-        return true;
-      });
-      activePeriodLabel = `Custom Range (${customFrom} to ${customTo})`;
-    } else if (viewMode === "LOGBOOK") {
-      const q = logbookSearch.trim().toLowerCase();
-      activeEntries = allEntries.filter((e) => {
+      return {
+        activeEntries: allEntries.filter(
+          (e) => (e.isoDate || "").slice(0, 7) === selectedMonthKey
+        ),
+        activePeriodLabel: monthObj.full,
+      };
+    }
+    if (viewMode === "ANNUAL") {
+      return {
+        activeEntries: allEntries.filter((e) =>
+          (e.isoDate || "").startsWith(String(currentYear))
+        ),
+        activePeriodLabel: `Full Year ${currentYear} (Actual Recorded Sales)`,
+      };
+    }
+    if (viewMode === "CUSTOM") {
+      return {
+        activeEntries: allEntries.filter((e) => {
+          const d = e.isoDate || "";
+          if (customFrom && d < customFrom) return false;
+          if (customTo && d > customTo) return false;
+          return true;
+        }),
+        activePeriodLabel: `Custom Range (${customFrom} to ${customTo})`,
+      };
+    }
+    const q = logbookSearch.trim().toLowerCase();
+    return {
+      activeEntries: allEntries.filter((e) => {
         if (!q) return true;
         return (
           e.logNo.toLowerCase().includes(q) ||
@@ -84,9 +137,19 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
           e.paymentType.toLowerCase().includes(q) ||
           (e.isoDate || "").toLowerCase().includes(q)
         );
-      });
-      activePeriodLabel = "Past Sales Logbook Ledger";
-    }
+      }),
+      activePeriodLabel: "Past Sales Logbook Ledger",
+    };
+  }
+
+  function render(): void {
+    if (!container) return;
+
+    const session = getOwnerSession();
+    const canManageDatabaseUtils = isOwnerManager(session);
+    const allEntries = ctx.state.salesLogbook || [];
+    const monthlySeries = buildMonthlySeries(allEntries, currentYear);
+    const { activeEntries, activePeriodLabel } = getFilteredEntries();
 
     const revBreakdown = computeSalesRevenueBreakdown(activeEntries);
     const productBreakdown = aggregateProductSales(activeEntries);
@@ -107,22 +170,34 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
       <div class="subnav-bar">
         <div class="subnav-tabs">
           <button type="button" class="subnav-btn ${
+            viewMode === "DAILY" ? "active" : ""
+          }" data-report-mode="DAILY">Daily</button>
+          <button type="button" class="subnav-btn ${
+            viewMode === "WEEKLY" ? "active" : ""
+          }" data-report-mode="WEEKLY">Weekly</button>
+          <button type="button" class="subnav-btn ${
             viewMode === "MONTHLY" ? "active" : ""
-          }" data-report-mode="MONTHLY">Monthly Sales Overview</button>
+          }" data-report-mode="MONTHLY">Monthly</button>
           <button type="button" class="subnav-btn ${
             viewMode === "ANNUAL" ? "active" : ""
-          }" data-report-mode="ANNUAL">Annual Sales Overview (${currentYear})</button>
+          }" data-report-mode="ANNUAL">Annual (${currentYear})</button>
           <button type="button" class="subnav-btn ${
             viewMode === "LOGBOOK" ? "active" : ""
-          }" data-report-mode="LOGBOOK">Past Sales Logbook (${allEntries.length})</button>
+          }" data-report-mode="LOGBOOK">Logbook (${allEntries.length})</button>
           <button type="button" class="subnav-btn ${
             viewMode === "CUSTOM" ? "active" : ""
-          }" data-report-mode="CUSTOM">Custom Date-Range Report</button>
+          }" data-report-mode="CUSTOM">Custom Range</button>
         </div>
 
         <div class="toolbar-group">
           ${
-            viewMode === "MONTHLY"
+            viewMode === "DAILY"
+              ? `<label for="repDayInput" style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">Date:</label>
+                 <input type="date" id="repDayInput" class="toolbar-input" value="${selectedDay}" />`
+              : viewMode === "WEEKLY"
+              ? `<label for="repWeekEndInput" style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">Week Ending:</label>
+                 <input type="date" id="repWeekEndInput" class="toolbar-input" value="${selectedWeekEnd}" />`
+              : viewMode === "MONTHLY"
               ? `<label for="repMonthSelect" style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">Month:</label>
                  <select id="repMonthSelect" class="toolbar-input" style="width:auto;">
                    ${monthsCurrentYear
@@ -141,8 +216,11 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
                  <input type="date" id="repDateTo" class="toolbar-input" value="${customTo}" />`
               : ""
           }
+          <button type="button" id="anExportCsvBtn" class="btn btn-light btn-sm">
+            Export CSV (.csv)
+          </button>
           <button type="button" id="anExportPdfBtn" class="btn btn-red btn-sm">
-            Print / Export Sales Report
+            Print / Export PDF
           </button>
         </div>
       </div>
@@ -433,6 +511,30 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
             .join("")
         : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">No recorded sales in ${currentYear} yet.</td></tr>`;
 
+    const allOrders = ctx.state.orders || [];
+    const activePipelineOrders = allOrders.filter(
+      (o) => o.stage !== "Released" && o.stage !== "Cancelled"
+    ).length;
+    const fulfilledOrdersCount = allOrders.filter(
+      (o) => o.stage === "Released"
+    ).length;
+    const cancelledOrdersCount = allOrders.filter(
+      (o) => o.stage === "Cancelled"
+    ).length;
+    const stockApparelItems = (ctx.state.inventory || []).filter(
+      (i) => i.category === "Stock Apparel"
+    );
+    const totalStockOnHand = stockApparelItems.reduce(
+      (sum, i) => sum + (Number(i.qty) || 0),
+      0
+    );
+    const lowOrOutStockItems = stockApparelItems.filter(
+      (i) => computeStockStatus(i.qty, i.lowStockThreshold || 10) !== "In Stock"
+    ).length;
+    const pendingReleaseCustomQty = (ctx.state.inventory || [])
+      .filter((i) => i.category === "Completed Custom")
+      .reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
+
     const auditRows =
       ctx.state.auditLogs.length > 0
         ? ctx.state.auditLogs
@@ -440,12 +542,13 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
             .map(
               (log) => `<tr>
               <td style="white-space:nowrap;"><strong>${log.timestamp}</strong></td>
+              <td><strong>${log.actorName || "JM Maker Owner/Manager"}</strong></td>
               <td><span class="module-tag tag-red">${log.module}</span></td>
               <td>${log.action}</td>
             </tr>`
             )
             .join("")
-        : `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px;">No system activity recorded yet.</td></tr>`;
+        : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">No system activity recorded yet.</td></tr>`;
 
     container.innerHTML = `
       ${subnavHtml}
@@ -453,7 +556,11 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
       <div class="kpi-strip">
         <div class="kpi-box">
           <span class="kpi-label">${
-            viewMode === "ANNUAL"
+            viewMode === "DAILY"
+              ? `Daily Revenue (${selectedDay})`
+              : viewMode === "WEEKLY"
+              ? "7-Day Weekly Revenue"
+              : viewMode === "ANNUAL"
               ? `Total Annual Revenue (${currentYear})`
               : viewMode === "MONTHLY"
               ? `Monthly Revenue (${activePeriodLabel})`
@@ -675,43 +782,101 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
           : ""
       }
 
+      <section class="module-card">
+        <div class="module-top">
+          <div>
+            <h2>Order Volume &amp; Inventory Movement Overview</h2>
+            <p class="module-subtitle">
+              Real-time order pipeline volume and finished-goods stock turnover metrics (Objective 5 &amp; Interview Q20)
+            </p>
+          </div>
+          <span class="module-tag tag-blue">${allOrders.length} Total Order(s)</span>
+        </div>
+        <div class="form-grid-4">
+          <div class="revenue-block">
+            <span class="billing-caption">Custom Order Volume</span>
+            <strong class="revenue-figure">${allOrders.length} Orders</strong>
+            <small style="display:block;color:var(--text-muted);margin-top:3px;">
+              ${activePipelineOrders} active &bull; ${fulfilledOrdersCount} fulfilled &bull; ${cancelledOrdersCount} cancelled
+            </small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Finished Stock On Hand</span>
+            <strong class="revenue-figure">${totalStockOnHand} pcs</strong>
+            <small style="display:block;color:var(--text-muted);margin-top:3px;">
+              Across ${stockApparelItems.length} product SKU(s) &bull; ${lowOrOutStockItems} low/out alert(s)
+            </small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Inventory Outflow (Period)</span>
+            <strong class="revenue-figure">${revBreakdown.totalUnitsSold} pcs</strong>
+            <small style="display:block;color:var(--text-muted);margin-top:3px;">
+              ${revBreakdown.customOrdersUnits} custom &bull; ${revBreakdown.stockSalesUnits} walk-in stock
+            </small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Ready-for-Pickup Staging</span>
+            <strong class="revenue-figure">${pendingReleaseCustomQty} pcs</strong>
+            <small style="display:block;color:var(--text-muted);margin-top:3px;">
+              Completed custom sets awaiting customer pickup
+            </small>
+          </div>
+        </div>
+      </section>
+
       <div class="control-grid">
         <section class="module-card">
           <div class="module-top">
-            <h2>Local Data Backup &amp; Reset</h2>
+            <h2>Database Backup, Recovery &amp; Reset</h2>
             <span class="module-tag tag-green">Last: ${
               ctx.state.lastBackupTime
             }</span>
           </div>
           <p class="module-subtitle">
-            Frontend testing data is stored locally in your browser. Download a JSON snapshot or clear all temporary test records back to a clean empty state.
+            Download a full JSON backup snapshot, restore a previously saved backup file for disaster recovery (Objective 6), or reset temporary test records.
           </p>
-          <div class="utilities-btn-grid">
-            <button type="button" id="anBackupJsonBtn" class="btn btn-utility">
-              Download Backup (.JSON)
-            </button>
-            <button type="button" id="anClearLocalDataBtn" class="btn ${
-              confirmClearLocalData ? "btn-red" : "btn-danger-outline"
-            }">
-              ${
-                confirmClearLocalData
-                  ? "Click Again to Confirm Clear All"
-                  : "Clear Local Test Data"
-              }
-            </button>
-          </div>
+          <input type="file" id="anRestoreJsonInput" accept="application/json,.json" hidden />
+          ${
+            canManageDatabaseUtils
+              ? `<div class="form-grid-3">
+                  <button type="button" id="anBackupJsonBtn" class="btn btn-utility">
+                    Download Backup (.JSON)
+                  </button>
+                  <button type="button" id="anRestoreJsonBtn" class="btn btn-utility">
+                    Restore Backup (.JSON)
+                  </button>
+                  <button type="button" id="anClearLocalDataBtn" class="btn ${
+                    confirmClearLocalData ? "btn-red" : "btn-danger-outline"
+                  }">
+                    ${
+                      confirmClearLocalData
+                        ? "Click Again to Confirm Clear All"
+                        : "Clear Local Test Data"
+                    }
+                  </button>
+                </div>`
+              : `<p style="font-size:0.8rem;color:var(--text-muted);">
+                  Database backup, restore, and data reset utilities are restricted to the <strong>Owner/Manager</strong> account.
+                </p>`
+          }
         </section>
 
         <section class="module-card">
           <div class="module-top">
             <h2>Recent System Activity</h2>
-            <span class="module-tag tag-red">${ctx.state.auditLogs.length}</span>
+            <div class="toolbar-group">
+              <span class="module-tag tag-red">${ctx.state.auditLogs.length}</span>
+              <button type="button" id="anOpenAuditTrailBtn" class="btn btn-light btn-sm">
+                Full Audit Trail &rarr;
+              </button>
+            </div>
           </div>
           <div class="table-scroll">
             <table class="clean-table">
               <thead>
                 <tr>
                   <th>Time</th>
+                  <th>User</th>
                   <th>Module</th>
                   <th>Activity</th>
                 </tr>
@@ -733,9 +898,15 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
     }
   });
 
-  container?.addEventListener("change", (e) => {
+  container?.addEventListener("change", async (e) => {
     const target = e.target as HTMLElement;
-    if (target.id === "repMonthSelect") {
+    if (target.id === "repDayInput") {
+      selectedDay = (target as HTMLInputElement).value || todayIso;
+      render();
+    } else if (target.id === "repWeekEndInput") {
+      selectedWeekEnd = (target as HTMLInputElement).value || todayIso;
+      render();
+    } else if (target.id === "repMonthSelect") {
       selectedMonthKey = (target as HTMLSelectElement).value;
       render();
     } else if (target.id === "repDateFrom") {
@@ -744,6 +915,49 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
     } else if (target.id === "repDateTo") {
       customTo = (target as HTMLInputElement).value;
       render();
+    } else if (target.id === "anRestoreJsonInput") {
+      if (!isOwnerManager(getOwnerSession())) {
+        ctx.showToast("Only the Owner/Manager can restore database backups.");
+        return;
+      }
+      const file = (target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text) as Partial<SystemState>;
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          !Array.isArray(parsed.orders) ||
+          !Array.isArray(parsed.inventory) ||
+          !Array.isArray(parsed.salesLogbook)
+        ) {
+          ctx.showToast(
+            "Invalid backup file: expected JM Maker JSON snapshot with orders, inventory, and salesLogbook."
+          );
+          return;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        const normalized = loadSystemState();
+        Object.assign(ctx.state, normalized);
+        appendAuditLog(
+          ctx.state,
+          "Backup",
+          `Restored store database backup from "${file.name}" (${ctx.state.orders.length} orders, ${ctx.state.inventory.length} stock items, ${ctx.state.salesLogbook.length} sales entries).`,
+          { actionType: "backup" }
+        );
+        pushNotification(ctx.state, {
+          title: "Database Backup Restored",
+          message: `Successfully recovered store records from "${file.name}".`,
+          category: "Store",
+          severity: "success",
+          targetPage: "analytics",
+        });
+        ctx.refreshAll();
+        ctx.showToast(`Restored database snapshot from "${file.name}".`);
+      } catch {
+        ctx.showToast("Could not read JSON backup file. Please verify the file format.");
+      }
     }
   });
 
@@ -764,12 +978,39 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
       return;
     }
 
+    if (target.id === "anOpenAuditTrailBtn") {
+      ctx.navigateTo("staff-monitoring");
+      return;
+    }
+
+    if (target.id === "anRestoreJsonBtn") {
+      if (!isOwnerManager(getOwnerSession())) {
+        ctx.showToast("Only the Owner/Manager can restore database backups.");
+        return;
+      }
+      (
+        document.getElementById("anRestoreJsonInput") as HTMLInputElement | null
+      )?.click();
+      return;
+    }
+
     if (target.id === "anBackupJsonBtn") {
+      if (!isOwnerManager(getOwnerSession())) {
+        ctx.showToast("Only the Owner/Manager can download database backups.");
+        return;
+      }
       ctx.state.lastBackupTime = formatTimeNow();
+      const session = getOwnerSession();
+      if (session?.userId) {
+        void updateOwnerProfileInSupabase(session.userId, {
+          lastBackupAt: new Date().toISOString(),
+        });
+      }
       appendAuditLog(
         ctx.state,
         "Backup",
-        `Downloaded store data backup (.JSON) at ${ctx.state.lastBackupTime}.`
+        `Downloaded store data backup (.JSON) at ${ctx.state.lastBackupTime}.`,
+        { actionType: "backup" }
       );
       pushNotification(ctx.state, {
         title: "Store Backup Downloaded",
@@ -795,6 +1036,10 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
     }
 
     if (target.id === "anClearLocalDataBtn") {
+      if (!isOwnerManager(getOwnerSession())) {
+        ctx.showToast("Only the Owner/Manager can clear store data.");
+        return;
+      }
       if (!confirmClearLocalData) {
         confirmClearLocalData = true;
         render();
@@ -804,6 +1049,7 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
         return;
       }
       confirmClearLocalData = false;
+      void resetOwnerDataInSupabase();
       const fresh = resetSystemState();
       Object.assign(ctx.state, fresh);
       ctx.refreshAll();
@@ -813,14 +1059,42 @@ export function initAnalyticsUtilitiesModule(ctx: ModuleContext): {
       return;
     }
 
-    if (target.id === "anExportPdfBtn") {
+    if (target.id === "anExportCsvBtn") {
+      const { activeEntries, activePeriodLabel } = getFilteredEntries();
+      const csv = buildSalesCsvContent(activeEntries);
       appendAuditLog(
         ctx.state,
         "Reports",
-        `Exported ${viewMode} PDF Sales Report.`
+        `Exported ${viewMode} CSV Sales Summary (${activePeriodLabel}, ${activeEntries.length} rows).`,
+        { actionType: "system" }
       );
       ctx.refreshAll();
-      ctx.printHtml(buildPrintableSalesReportHtml(ctx.state.salesLogbook));
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `jm-maker-sales-${viewMode.toLowerCase()}-${getTodayIsoDate()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      ctx.showToast(`Exported ${viewMode} CSV report (${activeEntries.length} entries).`);
+      return;
+    }
+
+    if (target.id === "anExportPdfBtn") {
+      const { activeEntries, activePeriodLabel } = getFilteredEntries();
+      appendAuditLog(
+        ctx.state,
+        "Reports",
+        `Exported ${viewMode} PDF Sales Report (${activePeriodLabel}).`,
+        { actionType: "system" }
+      );
+      ctx.refreshAll();
+      ctx.printHtml(
+        buildPrintableSalesReportHtml(
+          activeEntries.length > 0 ? activeEntries : ctx.state.salesLogbook
+        )
+      );
     }
   });
 

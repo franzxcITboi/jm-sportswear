@@ -7,19 +7,25 @@
 import {
   evaluatePasswordStrength,
   getRememberedEmail,
-  registerOwnerAccount,
-  resetOwnerPassword,
+  registerOwnerAsync,
+  resetOwnerPasswordAsync,
   saveOwnerSession,
   saveRememberedEmail,
+  signInOwnerAsync,
   validateLoginForm,
   validateOwnerRegistration,
-  verifyOwnerCredentials,
 } from "../services/authService";
+import {
+  appendAuditLog,
+  loadSystemState,
+  saveSystemState,
+} from "../store/systemStore";
 import type {
   LoginFormValues,
   OwnerRegistrationValues,
   OwnerSession,
 } from "../types/auth.types";
+import { formatTimeNow } from "../utils/formatters";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 15;
@@ -313,7 +319,7 @@ export function initLoginController(
   });
 
   // ---------------- Sign-In Submission ----------------
-  form.addEventListener("submit", (event: SubmitEvent) => {
+  form.addEventListener("submit", async (event: SubmitEvent) => {
     event.preventDefault();
     if (isLockedOut || isAuthenticating) return;
 
@@ -340,38 +346,57 @@ export function initLoginController(
     }
 
     setButtonLoading(true);
+    const authResult = await signInOwnerAsync(formData);
+    setButtonLoading(false);
 
-    window.setTimeout(() => {
-      setButtonLoading(false);
-      const authResult = verifyOwnerCredentials(formData);
-
-      if (!authResult.authenticated || !authResult.session) {
-        failedAttempts += 1;
-        triggerErrorShake();
-        if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-          triggerLockout();
-        } else {
-          const remainingTries = MAX_FAILED_ATTEMPTS - failedAttempts;
-          showStatusMessage(
-            `${authResult.error} (${remainingTries} attempt${
-              remainingTries === 1 ? "" : "s"
-            } left)`,
-            "error"
-          );
-        }
-        return;
+    if (!authResult.authenticated || !authResult.session) {
+      failedAttempts += 1;
+      triggerErrorShake();
+      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        triggerLockout();
+      } else {
+        const remainingTries = MAX_FAILED_ATTEMPTS - failedAttempts;
+        showStatusMessage(
+          `${authResult.error} (${remainingTries} attempt${
+            remainingTries === 1 ? "" : "s"
+          } left)`,
+          "error"
+        );
       }
+      return;
+    }
 
-      failedAttempts = 0;
-      saveRememberedEmail(formData.email, Boolean(formData.rememberMe));
-      saveOwnerSession(authResult.session);
-      passwordInput.value = "";
-      callbacks.onAuthenticated(authResult.session);
-    }, 650);
+    failedAttempts = 0;
+    saveRememberedEmail(formData.email, Boolean(formData.rememberMe));
+    saveOwnerSession(authResult.session);
+
+    // Record user login into the Immutable Activity & Login Audit Trail (Interview Q18)
+    const st = loadSystemState();
+    if (authResult.session.staffMemberId) {
+      const matched = (st.staffMembers || []).find(
+        (s) => s.id === authResult.session!.staffMemberId
+      );
+      if (matched) matched.lastLoginAt = formatTimeNow();
+    }
+    appendAuditLog(
+      st,
+      "Authentication",
+      `${authResult.session.ownerName} (${authResult.session.email}) signed in to the system.`,
+      {
+        actionType: "login",
+        actorName: authResult.session.ownerName,
+        actorRole: authResult.session.role || "owner_manager",
+        staffMemberId: authResult.session.staffMemberId,
+      }
+    );
+    saveSystemState(st);
+
+    passwordInput.value = "";
+    callbacks.onAuthenticated(authResult.session);
   });
 
   // ---------------- Account Creation Submission ----------------
-  registerOwnerForm?.addEventListener("submit", (event: SubmitEvent) => {
+  registerOwnerForm?.addEventListener("submit", async (event: SubmitEvent) => {
     event.preventDefault();
     if (
       !regOwnerNameInput ||
@@ -425,27 +450,36 @@ export function initLoginController(
     registerOwnerBtn.classList.add("is-loading");
     registerOwnerBtnText.textContent = "Creating Account...";
 
-    window.setTimeout(() => {
-      registerOwnerBtn.disabled = false;
-      registerOwnerBtn.classList.remove("is-loading");
-      registerOwnerBtnText.textContent = "Create Owner/Manager Account";
+    const regRes = await registerOwnerAsync(regValues);
 
-      const newSession = registerOwnerAccount(regValues);
-      saveRememberedEmail(regValues.email, true);
-      emailInput.value = regValues.email.trim();
-      regOwnerNameInput.value = "";
-      regEmailInput.value = "";
-      regPasswordInput.value = "";
-      regConfirmPasswordInput.value = "";
-      regOwnerPinInput.value = "";
-      if (passwordStrengthBox) passwordStrengthBox.hidden = true;
+    registerOwnerBtn.disabled = false;
+    registerOwnerBtn.classList.remove("is-loading");
+    registerOwnerBtnText.textContent = "Create Owner/Manager Account";
 
-      setAuthMode(false);
+    if (!regRes.success || !regRes.session) {
       showStatusMessage(
-        `Owner/Manager account created for ${newSession.ownerName} (${newSession.email}). You can now sign in.`,
-        "success"
+        regRes.error || "Unable to create owner account.",
+        "error"
       );
-    }, 700);
+      triggerErrorShake();
+      return;
+    }
+
+    const newSession = regRes.session;
+    saveRememberedEmail(regValues.email, true);
+    emailInput.value = regValues.email.trim();
+    regOwnerNameInput.value = "";
+    regEmailInput.value = "";
+    regPasswordInput.value = "";
+    regConfirmPasswordInput.value = "";
+    regOwnerPinInput.value = "";
+    if (passwordStrengthBox) passwordStrengthBox.hidden = true;
+
+    setAuthMode(false);
+    showStatusMessage(
+      `Owner/Manager account created for ${newSession.ownerName} (${newSession.email}). You can now sign in.`,
+      "success"
+    );
   });
 
   // ---------------- Forgot Password Modal ----------------
@@ -475,7 +509,7 @@ export function initLoginController(
     if (event.target === forgotModal) closeForgotModal();
   });
 
-  forgotForm?.addEventListener("submit", (event: SubmitEvent) => {
+  forgotForm?.addEventListener("submit", async (event: SubmitEvent) => {
     event.preventDefault();
     if (
       !recoveryEmailInput ||
@@ -496,11 +530,19 @@ export function initLoginController(
     recoveryNewPasswordError.textContent = "";
     recoverySuccess.hidden = true;
 
-    const resetResult = resetOwnerPassword({
+    sendRecoveryBtn.disabled = true;
+    sendRecoveryBtn.classList.add("is-loading");
+    sendRecoveryBtnText.textContent = "Updating...";
+
+    const resetResult = await resetOwnerPasswordAsync({
       email: recoveryEmailInput.value,
       ownerPin: recoveryPinInput.value,
       newPassword: recoveryNewPasswordInput.value,
     });
+
+    sendRecoveryBtn.disabled = false;
+    sendRecoveryBtn.classList.remove("is-loading");
+    sendRecoveryBtnText.textContent = "Update Password";
 
     if (!resetResult.success) {
       if (resetResult.errorFields?.email) {
@@ -516,20 +558,12 @@ export function initLoginController(
       return;
     }
 
-    sendRecoveryBtn.disabled = true;
-    sendRecoveryBtn.classList.add("is-loading");
-    sendRecoveryBtnText.textContent = "Updating...";
-
-    window.setTimeout(() => {
-      sendRecoveryBtn.disabled = false;
-      sendRecoveryBtn.classList.remove("is-loading");
-      sendRecoveryBtnText.textContent = "Update Password";
-      recoverySuccess.textContent =
-        "Owner password updated successfully! You can now close this window and sign in.";
-      recoverySuccess.hidden = false;
-      recoveryPinInput.value = "";
-      recoveryNewPasswordInput.value = "";
-    }, 650);
+    recoverySuccess.textContent =
+      resetResult.message ||
+      "Owner password updated successfully! You can now close this window and sign in.";
+    recoverySuccess.hidden = false;
+    recoveryPinInput.value = "";
+    recoveryNewPasswordInput.value = "";
   });
 
   return {

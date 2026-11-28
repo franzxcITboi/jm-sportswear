@@ -12,6 +12,7 @@ export type PageId =
   | "payment-proofs"
   | "sales-logbook"
   | "analytics"
+  | "staff-monitoring"
   | "notifications";
 
 export type WorkflowStage =
@@ -41,18 +42,26 @@ export interface FulfillmentChecklist {
 
 export interface CustomOrder {
   id: string;
+  /** Authoritative PostgreSQL UUID when synced with Supabase */
+  dbId?: string;
   clientName: string;
+  /** Customer phone / Messenger contact (Interview Q4) */
+  clientContact?: string;
   sublimationType: string;
   colorway: string;
   printingOption: string;
   unitPrice: number;
   sizes: SizeBreakdown;
   totalQty: number;
+  /** Discount applied in PHP before final totalAmount (Objective 1) */
+  discountAmount?: number;
   totalAmount: number;
   amountPaid: number;
   stage: WorkflowStage;
   specsVerified: boolean;
   fulfillmentChecklist?: FulfillmentChecklist;
+  /** Optional assigned staff code/ID responsible for this order (Objective 4) */
+  assignedStaffId?: string;
   fulfilledAt?: string;
   createdAt: string;
   jerseyTemplateImage?: string;
@@ -68,6 +77,8 @@ export type StockCondition =
 
 export interface InventoryItem {
   id: string;
+  /** Authoritative PostgreSQL UUID when synced with Supabase */
+  dbId?: string;
   itemName: string;
   category: "Stock Apparel" | "Completed Custom";
   linkedOrderId?: string;
@@ -146,6 +157,8 @@ export interface PaymentProofSubmission {
 }
 
 export interface SalesLogbookEntry {
+  /** Authoritative PostgreSQL UUID when synced with Supabase */
+  dbId?: string;
   logNo: string;
   dateTime: string;
   isoDate: string; // YYYY-MM-DD for accurate filtering
@@ -183,11 +196,90 @@ export interface OwnerNotification {
   linkedOrderId?: string;
 }
 
+export type AuditActionType =
+  | "login"
+  | "logout"
+  | "order_update"
+  | "task_update"
+  | "inventory_update"
+  | "price_change"
+  | "payment"
+  | "backup"
+  | "staff_admin"
+  | "system";
+
 export interface AuditLogEntry {
   id: string;
   timestamp: string;
   action: string;
   module: string;
+  /** Operational actor who performed this change (Objective 4 & Interview Q18) */
+  actorName?: string;
+  actorRole?: string;
+  actionType?: AuditActionType;
+  staffMemberId?: string;
+  relatedOrderId?: string;
+  relatedTaskId?: string;
+}
+
+export type StaffRoleLevel = "owner_manager" | "supervisor" | "staff";
+export type StaffAvailabilityStatus = "On Duty" | "Off Duty" | "On Leave";
+export type StaffAccountStatus = "Active" | "Inactive";
+
+export interface StaffPermissions {
+  canManagePOS: boolean;
+  canManageOrders: boolean;
+  canManageInventory: boolean;
+  canVerifyPayments: boolean;
+  canViewReports: boolean;
+}
+
+export interface StaffMember {
+  id: string;
+  /** Authoritative PostgreSQL UUID when synced with Supabase */
+  dbId?: string;
+  staffCode: string;
+  fullName: string;
+  email?: string;
+  /** Optional local sign-in password when testing staff RBAC login offline */
+  loginPassword?: string;
+  contactNumber: string;
+  positionTitle: string;
+  roleLevel: StaffRoleLevel;
+  availabilityStatus: StaffAvailabilityStatus;
+  accountStatus: StaffAccountStatus;
+  shiftSchedule: string;
+  permissions: StaffPermissions;
+  lastLoginAt?: string;
+  createdAt: string;
+}
+
+export type StaffTaskType =
+  | "Order Production"
+  | "Quality Inspection"
+  | "Inventory Check"
+  | "Order Release"
+  | "General Shop Task";
+
+export type StaffTaskPriority = "Low" | "Normal" | "High" | "Urgent";
+export type StaffTaskStatus = "Pending" | "In Progress" | "Completed" | "Cancelled";
+
+export interface StaffTask {
+  id: string;
+  /** Authoritative PostgreSQL UUID when synced with Supabase */
+  dbId?: string;
+  taskCode: string;
+  staffMemberId: string;
+  linkedOrderId?: string;
+  linkedInventoryItemId?: string;
+  title: string;
+  description: string;
+  taskType: StaffTaskType;
+  priority: StaffTaskPriority;
+  status: StaffTaskStatus;
+  dueDate?: string;
+  completedAt?: string;
+  createdAt: string;
 }
 
 export interface HistoricalMonthlySales {
@@ -250,6 +342,8 @@ export interface SystemState {
   paymentAccounts: PaymentAccountInstruction[];
   paymentVerificationLinks: PaymentVerificationLink[];
   paymentProofSubmissions: PaymentProofSubmission[];
+  staffMembers: StaffMember[];
+  staffTasks: StaffTask[];
   historicalMonthlySales: HistoricalMonthlySales[];
   notifications: OwnerNotification[];
   baseMonthlyRevenue: number;

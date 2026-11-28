@@ -351,6 +351,62 @@ export function initOverviewModule(ctx: ModuleContext): { render: () => void } {
           </div>
         </section>
       </div>
+
+      <section class="module-card" style="margin-top:2px;">
+        <div class="module-top">
+          <div>
+            <h2>Staff Monitoring &amp; Operational Accountability</h2>
+            <p class="module-subtitle">Live snapshot of shop personnel, assigned operational tasks, and immutable activity logs</p>
+          </div>
+          <button type="button" class="btn btn-light btn-sm" data-goto="staff-monitoring">
+            Open Staff Monitoring &rarr;
+          </button>
+        </div>
+        <div class="form-grid-4">
+          <div class="revenue-block">
+            <span class="billing-caption">Active Staff</span>
+            <strong class="revenue-figure">${
+              (ctx.state.staffMembers || []).filter(
+                (s) => s.accountStatus === "Active"
+              ).length
+            }</strong>
+            <small style="display:block;color:var(--text-muted);">${
+              (ctx.state.staffMembers || []).filter(
+                (s) =>
+                  s.accountStatus === "Active" &&
+                  s.availabilityStatus === "On Duty"
+              ).length
+            } On Duty</small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Open Staff Tasks</span>
+            <strong class="revenue-figure">${
+              (ctx.state.staffTasks || []).filter(
+                (t) => t.status === "Pending" || t.status === "In Progress"
+              ).length
+            }</strong>
+            <small style="display:block;color:var(--text-muted);">Pending or In Progress</small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Completed Tasks</span>
+            <strong class="revenue-figure" style="color:var(--green-text);">${
+              (ctx.state.staffTasks || []).filter(
+                (t) => t.status === "Completed"
+              ).length
+            }</strong>
+            <small style="display:block;color:var(--text-muted);">Tracked accomplishments</small>
+          </div>
+          <div class="revenue-block">
+            <span class="billing-caption">Immutable Audit Trail</span>
+            <strong class="revenue-figure">${ctx.state.auditLogs.length}</strong>
+            <small style="display:block;color:var(--text-muted);">${
+              ctx.state.auditLogs[0]
+                ? `Last: ${ctx.state.auditLogs[0].module}`
+                : "No actions logged yet"
+            }</small>
+          </div>
+        </div>
+      </section>
     `;
   }
 

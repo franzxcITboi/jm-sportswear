@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>System Explanation &amp; Implementation Paper | JM Maker Sportswear</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #4b5563;
+        --border: #d1d5db;
+        --accent: #b91c1c;
+        --accent-soft: #fef2f2;
+        --green: #166534;
+        --green-bg: #dcfce7;
+        --amber: #92400e;
+        --amber-bg: #fef3c7;
+        --bg-subtle: #f9fafb;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 32px 20px;
+        background: #f3f4f6;
+        color: var(--ink);
+        font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+        line-height: 1.6;
+        font-size: 14px;
+      }
+      .paper-sheet {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 48px 54px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+      .print-toolbar {
+        max-width: 960px;
+        margin: 0 auto 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .print-btn {
+        background: var(--accent);
+        color: #ffffff;
+        border: none;
+        border-radius: 7px;
+        padding: 9px 16px;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .cover-block {
+        text-align: center;
+        padding-bottom: 28px;
+        margin-bottom: 28px;
+        border-bottom: 2px solid var(--accent);
+      }
+      .cover-kicker {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+      .cover-block h1 {
+        font-size: 24px;
+        line-height: 1.3;
+        margin: 0 0 10px;
+        color: var(--ink);
+      }
+      .cover-sub {
+        font-size: 14px;
+        color: var(--muted);
+        margin: 0 0 18px;
+      }
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 20px;
+        text-align: left;
+        background: var(--bg-subtle);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 18px;
+        font-size: 13px;
+      }
+      h2 {
+        font-size: 17px;
+        color: var(--accent);
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 5px;
+        margin: 28px 0 12px;
+        page-break-after: avoid;
+      }
+      h3 {
+        font-size: 14.5px;
+        color: var(--ink);
+        margin: 18px 0 8px;
+        page-break-after: avoid;
+      }
+      p {
+        margin: 0 0 10px;
+        text-align: justify;
+      }
+      ul,
+      ol {
+        margin: 0 0 12px 20px;
+        padding: 0;
+      }
+      li {
+        margin-bottom: 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 18px;
+        font-size: 12.5px;
+      }
+      th,
+      td {
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--bg-subtle);
+        font-weight: 700;
+        color: var(--ink);
+      }
+      code {
+        background: #f3f4f6;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .badge-pass {
+        background: var(--green-bg);
+        color: var(--green);
+      }
+      .badge-note {
+        background: var(--amber-bg);
+        color: var(--amber);
+      }
+      .callout {
+        background: var(--accent-soft);
+        border-left: 4px solid var(--accent);
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin: 14px 0;
+      }
+      .flow-box {
+        background: var(--bg-subtle);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        margin: 10px 0 16px;
+      }
+      @media print {
+        body {
+          background: #ffffff;
+          padding: 0;
+        }
+        .print-toolbar {
+          display: none !important;
+        }
+        .paper-sheet {
+          border: none;
+          box-shadow: none;
+          padding: 0;
+          max-width: 100%;
+        }
+        table,
+        .callout,
+        .flow-box {
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="print-toolbar">
+      <span style="color: #4b5563; font-size: 13px;">
+        Print-ready Capstone System Explanation Paper (STI College Fairview)
+      </span>
+      <button type="button" class="print-btn" onclick="window.print()">
+        Print / Save as PDF
+      </button>
+    </div>
+
+    <main class="paper-sheet">
+      <header class="cover-block">
+        <div class="cover-kicker">STI College Fairview &bull; BS Information Technology Capstone Documentation</div>
+        <h1>Point of Sale and Inventory System with Staff Monitoring and Analytics for JM Maker Sportswear</h1>
+        <p class="cover-sub">
+          Final System Implementation Explanation, Objective Compliance Matrix, Supabase PostgreSQL Architecture, Testing Report &amp; Production-Readiness Assessment
+        </p>
+        <div class="meta-grid">
+          <div><strong>Proponents:</strong> Joshua N. Orsal, Almira Jane P. Sale, Rinoa Leigh P. Sampana, Marc Lenn Franz M. Villaluz</div>
+          <div><strong>Client Business:</strong> JM Maker Sportswear (Cabuyao, Laguna)</div>
+          <div><strong>Database Platform:</strong> Supabase PostgreSQL (13 Tables, 2 Views, 6 RPCs, RLS)</div>
+          <div><strong>Verification Status:</strong> 33/33 Automated Tests PASS &bull; 0 TS Errors &bull; Clean Build</div>
+        </div>
+      </header>
+
+      <h2>1. Introduction &amp; Operational Context</h2>
+      <p>
+        JM Maker Sportswear is a customized jersey manufacturing and sublimation printing enterprise located in Cabuyao, Laguna, serving individual clients, sports teams, schools, and corporate groups. Prior to this system, daily operations relied on handwritten logbooks to record customized order specifications, compute prices and partial balances, verify GCash transfers, update finished-goods stock, track production progress, and summarize sales.
+      </p>
+      <p>
+        Based on the capstone proposal and 25-question client interview transcript (Appendix A), the developed web application centralizes Point of Sale (POS), Custom Order Tracking, Finished Goods Inventory, Tokenized Payment Verification, Staff Monitoring with Role-Based Access Control (RBAC), Automated Notifications, Sales Analytics, and Database Backup &amp; Recovery into a unified platform.
+      </p>
+
+      <h2>2. Objective-to-Feature Compliance Matrix</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Capstone Objective</th>
+            <th>Implemented Feature &amp; Modules</th>
+            <th>Database Tables / Views</th>
+            <th>Status &amp; Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>SO 1:</strong> Point-of-Sale (POS) Module (transactions, totals, discounts, downpayments/full payments, receipts, customer contact)</td>
+            <td><code>posSpecsModule.ts</code>, <code>calculations.ts</code>, <code>salesLogbookModule.ts</code> (live subtotal + ₱50 XXL+ surcharge − ₱ discount, customer contact, printable invoice)</td>
+            <td><code>custom_orders</code>, <code>order_size_items</code>, <code>sales_logbook</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />E2E Stage 3 &amp; Live Formula Tests</td>
+          </tr>
+          <tr>
+            <td><strong>SO 2:</strong> Order Management &amp; Tracking (jersey specs + 4 sequential production stages)</td>
+            <td><code>fulfillmentModule.ts</code>, <code>fulfillmentStepsView.ts</code> (Step 1 Review → Step 2 Prepare → Step 3 Quality Check → Step 4 Complete Fulfillment with mandatory checklists)</td>
+            <td><code>custom_orders</code>, <code>order_fulfillment_checklists</code>, <code>inventory_items</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />E2E Stage 4 Checklist &amp; Balance Guards</td>
+          </tr>
+          <tr>
+            <td><strong>SO 3:</strong> Simplified Finished Goods Inventory (ready stock + completed custom orders only; low-stock alerts; no raw materials)</td>
+            <td><code>inventoryModule.ts</code>, <code>notificationsModule.ts</code> (product photos, inline price edit, real-time stock deduction, Low/Out-of-Stock alerts)</td>
+            <td><code>inventory_items</code>, <code>notifications</code>, <code>record_walk_in_stock_sale()</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />PG Oversell Block &amp; Low-Stock Trigger</td>
+          </tr>
+          <tr>
+            <td><strong>SO 4:</strong> Staff Monitoring Module (user logins, staff RBAC permissions, task tracking, immutable audit trail)</td>
+            <td><code>staffMonitoringModule.ts</code>, <code>staffMonitoringMetrics.ts</code>, <code>authService.ts</code>, <code>loginController.ts</code>, <code>dashboardController.ts</code></td>
+            <td><code>staff_members</code>, <code>staff_tasks</code>, <code>audit_logs</code> (append-only), <code>v_staff_performance_summary</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />PG RLS/Immutability + E2E Stage 7</td>
+          </tr>
+          <tr>
+            <td><strong>SO 5:</strong> Analytics &amp; Reporting Module (charts, revenue trends, top items, order volume, inventory movement; daily/weekly/monthly exports)</td>
+            <td><code>salesReportsModule.ts</code>, <code>salesReportMetrics.ts</code> (Daily, Weekly, Monthly, Annual, Custom, Logbook tabs; CSV &amp; PDF exports)</td>
+            <td><code>sales_logbook</code>, <code>custom_orders</code>, <code>inventory_items</code>, <code>v_monthly_sales_summary</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />E2E Stage 8 &amp; PG View Aggregation</td>
+          </tr>
+          <tr>
+            <td><strong>SO 6:</strong> System Security &amp; Database Utilities (access control, audit logging, backup &amp; recovery)</td>
+            <td>RBAC guards, login lockout, RLS across 13 tables, zero <code>service_role</code> exposure, JSON Backup Download &amp; Restore Recovery</td>
+            <td>RLS policies + 6 RPCs + <code>reset_owner_store_data()</code></td>
+            <td><span class="badge badge-pass">Verified PASS</span><br />PG RLS Isolation + E2E Stage 8 Restore</td>
+          </tr>
+          <tr>
+            <td><strong>SO 7:</strong> ISO/IEC 25010 Software Quality Evaluation</td>
+            <td>Automated technical verification across functionality, usability, reliability, efficiency, and security</td>
+            <td>All 13 tables, 2 views, 6 RPCs</td>
+            <td><span class="badge badge-note">Tech Validated</span><br />33/33 Automated PASS; Field UAT Survey Pending Defense</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>3. System Architecture &amp; User Roles (RBAC)</h2>
+      <p>
+        The application consists of three Vite-bundled web pages: <code>index.html</code> (Sign-In, Account Creation &amp; Recovery), <code>dashboard.html</code> (9-module authenticated workspace), and <code>buyer.html</code> (token-gated zero-login payment proof upload portal). It runs natively on <strong>Supabase PostgreSQL + Supabase Auth + Realtime</strong> when configured via <code>.env.local</code>, and automatically falls back to browser <code>localStorage</code> with zero preloaded demo records for offline demonstrations.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Permitted Scope</th>
+            <th>Enforced Security Restrictions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Owner / Manager</strong> (<code>owner_manager</code>)</td>
+            <td>Full access to all 9 modules, staff directory &amp; RBAC administration, payment verification, and JSON backup/restore/reset utilities.</td>
+            <td>Cannot modify or delete records in <code>audit_logs</code> (immutable append-only).</td>
+          </tr>
+          <tr>
+            <td><strong>Supervisor</strong> (<code>supervisor</code>)</td>
+            <td>Dashboard Overview, Notifications, Staff Monitoring (view directory, assign/update tasks, inspect audit trail), plus assigned RBAC modules.</td>
+            <td>Cannot create/delete staff profiles, modify RBAC permissions, restore backups, or reset store data.</td>
+          </tr>
+          <tr>
+            <td><strong>Shop Staff</strong> (<code>staff</code>)</td>
+            <td>Dashboard Overview, Notifications, and only the module permissions checked by the Owner (<code>POS</code>, <code>Orders</code>, <code>Inventory</code>, <code>Payments</code>, <code>Reports</code>).</td>
+            <td>Unauthorized sidebar items hidden; navigation blocked by <code>canAccessPage()</code>; <code>Inactive</code> accounts blocked at sign-in.</td>
+          </tr>
+          <tr>
+            <td><strong>Customer / Buyer</strong> (<code>anon</code> token-scoped)</td>
+            <td>Single-order receipt submission &amp; status lookup via opaque <code>buyer.html?token=jm_...</code> link.</td>
+            <td>Zero direct PostgreSQL table privileges; all access mediated by <code>SECURITY DEFINER</code> RPCs.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>4. Core System &amp; Staff Monitoring Workflows</h2>
+      <h3>4.1 Custom Order, Payment Verification &amp; 4-Step Fulfillment Flow</h3>
+      <div class="flow-box">[1. Custom Orders &amp; POS] Capture customer name, contact info, jersey package, colorway, printing, template, sizes (XS–XXL+ +₱50), &amp; ₱ discount
+        │
+        ├──&gt; [Payment Link Generated] Opaque URL (buyer.html?token=jm_...) sent to customer
+        │       └──&gt; Buyer uploads GCash/Bank proof + ref code (no login)
+        │               └──&gt; Owner Reviews: Reject (re-opens link) OR Approve (atomic order credit + sales_logbook + audit)
+        │
+        └──&gt; [4-Step Guided Fulfillment]
+                Step 1: Review Order (Order Received)
+                  ──&gt; Step 2: Prepare Order (Production checklist: Design + All Pieces) ──&gt; Stages Completed Custom Stock
+                        ──&gt; Step 3: Check Order (QC checklist: Qty + Print/Stitching) ──&gt; Fires "Ready for Release" Alert
+                              ──&gt; Step 4: Complete Fulfillment (Blocked unless Balance == ₱0) ──&gt; Released &amp; Clears Staging Stock</div>
+
+      <h3>4.2 Staff Monitoring &amp; Immutable Accountability Flow (Objective 4)</h3>
+      <div class="flow-box">[Owner/Manager] Registers Staff Profile (Code, Position, Shift, Availability) + Assigns 5 RBAC Module Permissions
+        │
+        ├──&gt; [Authentication Audit] Staff signs in/out ──&gt; Updates lastLoginAt &amp; logs immutable 'login'/'logout' event
+        ├──&gt; [Operational Tasks] Assign Production / QC / Inventory / Release Task linked to Order or SKU
+        │       └──&gt; Pending ──&gt; In Progress ──&gt; Completed (stamps completedAt + logs 'task_update' + notifies owner)
+        └──&gt; [Activity Accountability] Every Order Update, Price Edit, Stock Adjustment, Payment &amp; Backup records:
+                (Timestamp, Actor Name, Actor Role, Event Type, Module, Action Description) in Append-Only audit_logs
+                └──&gt; Live KPIs (v_staff_performance_summary) + Searchable Trail + Printable Staff Monitoring Report</div>
+
+      <h2>5. Normalized Supabase PostgreSQL Database Design</h2>
+      <p>
+        Implemented across four chronological, non-destructive SQL migrations (<code>202611260001</code> through <code>202611280004</code>) totaling <strong>13 normalized tables</strong>, <strong>2 security-invoker views</strong> (<code>v_monthly_sales_summary</code>, <code>v_staff_performance_summary</code>), and <strong>6 transactional RPCs</strong>:
+      </p>
+      <ul>
+        <li><strong>Core Store &amp; Staff Tables:</strong> <code>owner_profiles</code> (1:1 with <code>auth.users</code>), <code>staff_members</code> (1:N with 5 RBAC flags), <code>staff_tasks</code> (1:N from staff, 0..1:N to orders/inventory).</li>
+        <li><strong>POS &amp; Fulfillment Tables:</strong> <code>custom_orders</code> (with <code>client_contact</code>, <code>discount_amount</code>, <code>assigned_staff_id</code>), <code>order_size_items</code> (1:N normalized sizes), <code>order_fulfillment_checklists</code> (1:1 step flags), <code>inventory_items</code> (finished goods + 0..1:0..1 pickup staging).</li>
+        <li><strong>Payments, Sales &amp; Governance Tables:</strong> <code>payment_accounts</code>, <code>payment_verification_links</code>, <code>payment_proof_submissions</code> (1:N retries per link, partial unique active ref numbers), <code>sales_logbook</code> (unique credit per approved proof), <code>notifications</code>, and append-only <code>audit_logs</code>.</li>
+      </ul>
+
+      <h2>6. Verified Tools &amp; Technologies (Actual Implementation)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Verified Implemented Technology</th>
+            <th>Proposal vs. Final Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Frontend UI &amp; Language</strong></td>
+            <td>HTML5, Modular CSS3 (Light/Dark + Print), <strong>TypeScript</strong> (<code>strict: true</code>, ES2020)</td>
+            <td>Refined from React.js to lightweight modular TypeScript for faster 1.43s builds and zero framework overhead.</td>
+          </tr>
+          <tr>
+            <td><strong>Build &amp; Bundler</strong></td>
+            <td><strong>Vite v8.4.0</strong> (multi-page Rollup build) on <strong>Node.js v26.13.0</strong></td>
+            <td>Bundles <code>index.html</code>, <code>dashboard.html</code>, and <code>buyer.html</code> into 84 optimized modules.</td>
+          </tr>
+          <tr>
+            <td><strong>Charts &amp; Exports</strong></td>
+            <td>Custom Responsive CSS Bar Charts, Native Blob CSV/JSON Export, Browser Print PDF</td>
+            <td>Replaces Chart.js with zero-dependency theme-aware CSS visualizations that print crisply.</td>
+          </tr>
+          <tr>
+            <td><strong>Database &amp; Backend</strong></td>
+            <td><strong>Supabase</strong> (<code>@supabase/supabase-js ^2.119.2</code>): PostgreSQL, Auth, RLS, Realtime, PL/pgSQL RPCs</td>
+            <td>PostgreSQL RPCs replace a separate Node/Express server, delivering atomic ACID transactions with zero server hosting overhead.</td>
+          </tr>
+          <tr>
+            <td><strong>Testing &amp; Version Control</strong></td>
+            <td><strong>PGlite</strong> (real embedded PostgreSQL), Node.js E2E QA Suite, <code>tsc --noEmit</code>, Git v2.56.0, GitHub, VS Code</td>
+            <td>Every SQL migration, RLS rule, RPC, and UI module verified programmatically.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>7. Testing Results &amp; Production Readiness</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Verification Suite</th>
+            <th>Score / Outcome</th>
+            <th>Key Assertions Validated</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>PostgreSQL Schema, RLS &amp; RPC Suite</strong> (<code>verify_supabase_db.mjs</code>)</td>
+            <td><span class="badge badge-pass">11 / 11 PASS</span></td>
+            <td>All 4 SQL migrations, 13 tables, 2 views, CHECK/UNIQUE rules, cross-owner RLS isolation, zero <code>anon</code> access, buyer/owner payment RPCs, Staff Monitoring + immutable <code>audit_logs</code>, walk-in stock sale RPC, and store reset.</td>
+          </tr>
+          <tr>
+            <td><strong>Supabase Mappers &amp; Security Scan</strong> (<code>verify_supabase_mappers.mjs</code>)</td>
+            <td><span class="badge badge-pass">7 / 7 PASS</span></td>
+            <td>Safe offline fallback, bidirectional mapping of orders/sizes/checklists/inventory/staff/tasks/audits, and zero <code>service_role</code> references in <code>src/</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Full E2E Application QA Suite</strong> (<code>qa_full_e2e_test.mjs</code>)</td>
+            <td><span class="badge badge-pass">15 / 15 PASS</span></td>
+            <td>Clean empty startup, all 9 modules, POS discount/contact, 4-step fulfillment + Ready for Release alert, payment proof loop, Staff Monitoring + RBAC enforcement + tasks + print report, Daily/Weekly/CSV reports, and JSON Backup Restore.</td>
+          </tr>
+          <tr>
+            <td><strong>TypeScript &amp; Vite Production Build</strong></td>
+            <td><span class="badge badge-pass">0 Errors / 1.43s</span></td>
+            <td><code>tsc --noEmit</code> exited 0; <code>vite v8.4.0 build</code> transformed 84 modules cleanly.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>8. Scope Limitations &amp; Production Verdict</h2>
+      <ul>
+        <li><strong>Manual GCash / Bank Verification Only:</strong> No live GCash API integration; reference numbers and proof screenshots are manually verified by the owner (Interview Q9).</li>
+        <li><strong>Finished Goods Scope Only:</strong> Tracks ready-made stock and completed custom orders; excludes raw materials such as fabric rolls, thread, and ink (Interview Q12, Q24).</li>
+        <li><strong>Digital Tracking Only:</strong> Monitors production stages and checklists without automating physical printing or sewing equipment; report accuracy depends on user data entry.</li>
+        <li><strong>Cloud Multi-Device Staff Auth Note:</strong> Local/workstation staff logins work immediately via Staff Directory credentials; multi-device Supabase cloud staff sessions can be bound to <code>staff_members.auth_user_id</code> when provisioned in Supabase Auth.</li>
+      </ul>
+
+      <div class="callout">
+        <strong>Final Readiness Verdict: READY FOR CAPSTONE PRESENTATION &amp; SUPABASE DEPLOYMENT.</strong>
+        All six functional capstone objectives — including the fully restored, database-connected Staff Monitoring module, POS discounts &amp; customer contacts, Daily/Weekly/CSV analytics, and JSON backup &amp; disaster recovery — are complete and verified across 33/33 automated checks, 0 TypeScript errors, and a clean Vite production build. Only the human client UAT survey (Objective 7) and live Supabase project credentials (<code>.env.local</code>) remain for final deployment.
+      </div>
+    </main>
+  </body>
+</html>

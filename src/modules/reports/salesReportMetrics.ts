@@ -110,6 +110,51 @@ export function buildMonthlySeries(
   });
 }
 
+export function buildSalesCsvContent(entries: SalesLogbookEntry[]): string {
+  const esc = (val: string | number | undefined): string => {
+    const str = String(val ?? "");
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const header = [
+    "Log No",
+    "OR Number",
+    "Date",
+    "Order Ref",
+    "Customer / Team",
+    "Particulars",
+    "Qty",
+    "Unit Price (PHP)",
+    "Payment Type",
+    "Payment Method",
+    "Reference Number",
+    "Amount Paid (PHP)",
+    "Balance Remaining (PHP)",
+    "Remarks",
+  ].join(",");
+
+  const rows = entries.map((e) =>
+    [
+      e.logNo,
+      e.orNumber,
+      e.isoDate,
+      e.orderId,
+      e.clientName,
+      e.particulars,
+      e.qty,
+      e.unitPrice ?? 0,
+      e.paymentType,
+      e.paymentMethod || "Cash",
+      e.referenceNumber || "",
+      e.amountPaid,
+      e.balanceRemaining,
+      e.remarks,
+    ]
+      .map(esc)
+      .join(",")
+  );
+  return [header, ...rows].join("\n");
+}
+
 export function buildPrintableSalesReportHtml(
   entries: SalesLogbookEntry[]
 ): string {
