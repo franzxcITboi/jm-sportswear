@@ -16,7 +16,9 @@ function readViteEnv(key: string): string {
   return (env?.[key] || "").trim();
 }
 
-const SUPABASE_URL = readViteEnv("VITE_SUPABASE_URL");
+const SUPABASE_URL = readViteEnv("VITE_SUPABASE_URL")
+  .replace(/\/rest\/v1\/?$/i, "")
+  .replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = readViteEnv("VITE_SUPABASE_ANON_KEY");
 
 const hasValidConfig =

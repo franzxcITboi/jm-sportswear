@@ -99,7 +99,7 @@ export function validateOwnerRegistration(
     errors.email = "Please enter your Gmail address.";
   } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
     errors.email = "Please enter a valid Gmail address (e.g., name@gmail.com).";
-  } else {
+  } else if (!isSupabaseConfigured()) {
     const existing = getRegisteredOwnerAccounts().some(
       (acc) => acc.email.toLowerCase() === normalizedEmail
     );
